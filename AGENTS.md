@@ -17,51 +17,102 @@ Core capabilities: cross-market alpha discovery, contrarian signal detection.
 
 ## Architecture
 
-### LLM Provider Abstraction
+### Adapter + Capability Registry Pattern
 
-Each agent role binds to an LLM provider interface, not a concrete model.
-Swap providers per role without touching agent logic.
+Both LLM and Data layers use the same pattern: adapters register capabilities,
+registry routes requests by capability. Agents never reference a specific source directly.
 
 ```
-LLMProvider (interface)
-├── ClaudeProvider
-├── OpenAIProvider
-├── GeminiProvider
-└── ... (extensible)
+Agent: "I need Price data for AAPL"
+  → Registry.get(Price)
+  → Returns FinnhubAdapter (primary) or YfinanceAdapter (fallback)
 ```
+
+### LLM Layer
+
+```
+llm/
+├── base.py            # LLMProvider protocol (Chat, StructuredOutput, Streaming)
+├── registry.py        # role → adapter routing, fallback chain
+└── adapters/
+    ├── claude.py      # ClaudeAdapter
+    ├── openai.py      # OpenAIAdapter
+    └── gemini.py      # GeminiAdapter
+```
+
+Each adapter registers its capabilities. Prototype defaults to Claude for all roles.
+Expand per-role assignment via config when needed.
 
 Roles and default assignments (overridable via config):
 
-| Role       | Description                        | Default Provider |
-|------------|------------------------------------|------------------|
-| researcher | Gather and summarize market data   | Claude Sonnet    |
-| analyst    | Deep financial/cross-market analysis | Claude Opus    |
-| strategist | Investment decision and signal generation | Claude Opus |
-| reporter   | Summary and report generation      | Claude Haiku     |
+| Role       | Description                          | Default          |
+|------------|--------------------------------------|------------------|
+| researcher | Gather and summarize market data     | Claude Sonnet    |
+| analyst    | Deep financial/cross-market analysis | Claude Opus      |
+| strategist | Investment decision and signal gen   | Claude Opus      |
+| reporter   | Summary and report generation        | Claude Haiku     |
 
-### Data Provider Abstraction
-
-Each data type binds to a provider interface. Add/swap sources without changing agent logic.
+### Data Layer
 
 ```
-DataProvider (interface)
-├── PriceProvider      - stock price, OHLCV, historical
-├── FundamentalProvider - financial statements, valuation (PE, PEG, PBR, EV/EBITDA)
-├── MacroProvider      - interest rates, GDP, CPI, exchange rates
-├── NewsProvider       - news articles, sentiment scores
-├── AlternativeProvider - insider trading, congressional trades, ESG, SEC filings
-└── ... (extensible)
+data/
+├── base.py            # Capability protocols (Price, Fundamental, Macro, News, Alternative)
+├── registry.py        # capability → adapter routing, fallback chain
+└── adapters/
+    ├── finnhub.py     # Price, News, Alternative (insider, congress)
+    ├── yfinance.py    # Price, Fundamental
+    ├── fred.py        # Macro
+    └── fmp.py         # Fundamental, Alternative (SEC filings)
 ```
 
-Default source mapping (overridable via config):
+Each adapter is a single class with one client, registering multiple capabilities.
+Registry auto-routes by capability with fallback:
 
-| Data Type     | Primary Source | Fallback       |
-|---------------|---------------|----------------|
-| Price/OHLCV   | Finnhub       | yfinance       |
-| Fundamentals  | Finnhub       | FMP, yfinance  |
-| Macro         | FRED          | World Bank     |
-| News/Sentiment| Finnhub       | NewsAPI, GDELT |
-| Alternative   | Finnhub       | SEC EDGAR      |
+```python
+class FinnhubAdapter:
+    capabilities = [Price, News, Insider, Congress]
+
+    def __init__(self, api_key: str):
+        self.client = FinnhubClient(api_key)
+
+    async def get_price(self, ticker: str) -> float: ...
+    async def get_news(self, ticker: str) -> list[News]: ...
+
+# Agents request by capability, not by source
+registry.get(Price)          # → FinnhubAdapter (primary)
+registry.get(Price, "yf")    # → YfinanceAdapter (explicit)
+```
+
+Default capability routing (overridable via config):
+
+| Capability    | Primary    | Fallback       |
+|---------------|------------|----------------|
+| Price/OHLCV   | Finnhub    | yfinance       |
+| Fundamental   | Finnhub    | FMP, yfinance  |
+| Macro         | FRED       | World Bank     |
+| News/Sentiment| Finnhub    | NewsAPI, GDELT |
+| Alternative   | Finnhub    | SEC EDGAR      |
+
+API key missing → adapter auto-skipped. Fallback kicks in transparently.
+
+### Storage
+
+DuckDB single-file database (`tracer.db`). Append-only for market data, analytical queries optimized.
+
+```
+DuckDB (tracer.db)
+├── prices          - OHLCV time series (daily append)
+├── fundamentals    - valuation, financial statements (quarterly append)
+├── macro           - economic indicators (monthly append)
+├── news            - articles + sentiment scores (daily append)
+├── alternative     - insider trades, congressional trades, etc. (event append)
+├── signals         - generated signal history
+├── reports         - analysis report metadata
+└── agent_logs      - agent execution logs
+```
+
+Also serves as API cache to reduce rate limit pressure.
+Export to Parquet for backup/sharing.
 
 ### Rate Limits (reference)
 
@@ -84,25 +135,33 @@ tracer/
 │   └── tracer/
 │       ├── __init__.py
 │       ├── agents/            # Agent roles (researcher, analyst, strategist, reporter)
-│       ├── llm/               # LLM provider abstraction
-│       │   ├── base.py        # LLMProvider interface
-│       │   ├── claude.py
-│       │   ├── openai.py
-│       │   └── gemini.py
-│       ├── data/              # Data provider abstraction
-│       │   ├── base.py        # DataProvider interfaces
-│       │   ├── finnhub.py
-│       │   ├── yfinance.py
-│       │   ├── fred.py
-│       │   └── fmp.py
+│       ├── llm/               # LLM adapter + capability registry
+│       │   ├── base.py        # LLMProvider protocol
+│       │   ├── registry.py    # Role → adapter routing
+│       │   └── adapters/
+│       │       ├── claude.py
+│       │       ├── openai.py
+│       │       └── gemini.py
+│       ├── data/              # Data adapter + capability registry
+│       │   ├── base.py        # Capability protocols (Price, Fundamental, etc.)
+│       │   ├── registry.py    # Capability → adapter routing, fallback
+│       │   └── adapters/
+│       │       ├── finnhub.py   # Price, News, Alternative
+│       │       ├── yfinance.py  # Price, Fundamental
+│       │       ├── fred.py      # Macro
+│       │       └── fmp.py       # Fundamental, Alternative
 │       ├── models/            # Domain models (Stock, Signal, Report, etc.)
-│       ├── strategies/        # Alpha discovery & contrarian signal strategies
-│       └── config/            # Configuration and provider registry
+│       ├── storage/           # DuckDB persistence layer
+│       │   ├── db.py          # Connection management
+│       │   └── tables.py      # Schema definitions
+│       └── config/            # Configuration loader
 ├── tests/
 │   ├── agents/
 │   ├── llm/
 │   ├── data/
+│   ├── storage/
 │   └── strategies/
+├── skills/                    # Agent skill definitions (SKILL.md per skill)
 └── scripts/                   # CLI entry points, one-off utilities
 ```
 
