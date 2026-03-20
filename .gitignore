@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environment
+.venv/
+venv/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# uv
+.uv/
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Type checker
+.pyright/
+pyrightconfig.json.bak
+
+# Linter
+.ruff_cache/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Session memory
+memory/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# OMC
+.omc/
