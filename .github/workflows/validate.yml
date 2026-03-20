@@ -43,18 +43,3 @@ jobs:
 
       - name: Validate skills
         run: python scripts/validate_skills.py
-
-  auto-merge:
-    needs: [lint, validate-docs]
-    runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Enable auto-merge
-        run: gh pr merge ${{ github.event.pull_request.number }} --auto --squash
-        env:
-          GH_TOKEN: ${{ github.token }}
