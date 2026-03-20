@@ -47,8 +47,19 @@ tracer/
 │   └── config/            # Configuration loader
 ├── tests/                 # Mirrors src/ structure
 ├── docs/                  # Design documentation (architecture, pipeline, memory, etc.)
+│   ├── contrib/           # Contribution guidelines (docs-rules, skills-rules)
+│   ├── architecture.md
+│   ├── conversational-layer.md
+│   ├── memory-system.md
+│   ├── pipeline.md
+│   └── workspace.md
 ├── skills/                # Agent skill definitions (SKILL.md per skill)
-└── scripts/               # CLI entry points
+│   ├── add-data-provider/
+│   ├── add-llm-provider/
+│   ├── alpha-report/
+│   ├── analyze-market/
+│   └── backtest/
+└── scripts/               # CI validation scripts
 ```
 
 ## Coding Conventions
