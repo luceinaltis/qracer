@@ -8,8 +8,8 @@ Users query in natural language; the agent fetches real data, builds causal reas
 
 ## Agent Guidelines
 
-Core principles, autonomy boundaries, and communication rules are defined in `.claude/AGENTS.md`.
-For task-specific workflows (feature dev, PR review, testing, etc.), see `.claude/skills/`.
+Before starting any task, check `.claude/skills/` for a matching skill and follow it.
+Skills define workflows for feature dev, PR review, testing, refactoring, and more — always use them over ad-hoc approaches.
 
 ## Design Documents
 
