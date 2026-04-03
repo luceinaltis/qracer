@@ -53,3 +53,7 @@ Thumbs.db
 
 # OMC
 .omc/
+
+# AI assistants
+.claude/
+.codex/
