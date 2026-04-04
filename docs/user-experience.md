@@ -73,33 +73,155 @@ Agent: "AAPL이 맞나요? 매수 관점에서 분석해드릴까요?"
 
 ## 3. 대화 맥락 유지
 
-### 세션 상태
+### 3.1 기술적 구현
 
+**메모리 구조**
 ```
-Session Context
-├── Current Topic: AAPL (last mentioned)
-├── Topic Stack: [AAPL, TSLA, NVDA]
-├── Analysis Depth: deep (from last /analyze)
-├── User Intent: buy_research
-└── Pending: Q2 earnings impact question
+Session Memory (Redis/SQLite)
+├── session_id: uuid
+├── user_id: telegram_id
+├── created_at: timestamp
+├── last_activity: timestamp
+├── context_ttl: 600s (10분)
+│
+├── current_topic:
+│   ├── type: ticker | sector | theme | portfolio
+│   ├── value: "AAPL" | "semiconductors" | "ai"
+│   └── mentioned_at: timestamp
+│
+├── topic_stack: [  # 최근 5개
+│   {type, value, mentioned_at},
+│   ...
+│]
+│
+├── analysis_state:
+│   ├── depth: quick | deep
+│   ├── intent: buy | sell | research | monitor
+│   └── pending_questions: [string]
+│
+└── user_preferences:
+    ├── default_analysis_depth: quick
+    ├── alert_thresholds: {...}
+    └── preferred_sectors: [...]
 ```
 
-### 컨텍스트 규칙
+**저장 정책**
+| 데이터 | 저장 위치 | TTL | 복원 |
+|--------|-----------|-----|------|
+| 활성 세션 | Redis | 10분 | 자동 |
+| 토픽 히스토리 | SQLite | 30일 | 대화 재개 시 |
+| 사용자 설정 | SQLite | 영구 | 로그인 시 |
 
-**자동 주제 추적**
-- 마지막 언급 티커/섹터를 기본 주제로 유지
-- 10분 이상 대화 중단 시 컨텍스트 페이드
+**만료 및 갱신**
+- 매 메시지마다 `last_activity` 업데이트
+- 10분 무응답 → 세션 펜딩 상태 (복원 가능)
+- 24시간 무응답 → 세션 아카이브 (히스토리는 유지)
 
-**대명사 해석**
-| 대명사 | 매핑 |
-|--------|------|
-| "이거", "이 종목" | 마지막 티커 |
-| "전에 본 것" | 토픽 스택에서 검색 |
-| "다른 거" | 현재 주제 제외하고 제안 |
+### 3.2 사용자 경험 흐름
 
-**의도 유지**
-- 연속 질문은 동일한 분석 깊이 유지
-- 의도 전환 시 확인: "실시간 요약으로 바꿀까요?"
+**정상 흐름 예시**
+```
+User:  "AAPL 분석해줘"
+Agent: [AAPL 심층 분석 제공]
+       현재 주제: AAPL | 깊이: deep
+
+User:  "PER이 높아 보이는데?"
+Agent: [AAPL PER 컨텍스트 설명]
+       현재 주제: AAPL | 깊이: deep (유지)
+
+User:  "그럼 매수 타이밍 언제가 좋을까?"
+Agent: [AAPL 진입 시점 분석]
+       현재 주제: AAPL | 깊이: deep (유지)
+
+User:  "TSLA는 어때?"
+Agent: [TSLA 심층 분석 제공]
+       현재 주제: TSLA | 토픽 스택: [TSLA, AAPL]
+```
+
+**컨텍스트 전환 예시**
+```
+User:  "AAPL 분석해줘"
+Agent: [AAPL 분석] 현재 주제: AAPL
+
+User:  "실시간으로 간단히 알려줘"  # 의도 전환
+Agent: "AAPL을 실시간 요약으로 바꿀까요? 아니면 다른 종목?"
+
+User:  "아니 AAPL 맞아"
+Agent: [AAPL 실시간 요약] 깊이: quick으로 변경
+```
+
+### 3.3 복잡한 상황 처리
+
+**여러 주제 섞일 때**
+```
+User: "AAPL이랑 TSLA 중에 뭐가 나을까?"
+→ 토픽 스택: [AAPL, TSLA] (동등한 우선순위)
+→ 비교 모드 활성화
+
+User: "그런데 NVDA도 괜찮아 보여"
+→ 토픽 스택: [NVDA, AAPL, TSLA]
+→ "세 종목 모두 비교할까요? 아니면 NVDA만 추가 분석할까요?"
+```
+
+**모호한 대명사**
+```
+User: "AAPL 분석해줘"
+Agent: [분석 제공]
+
+User: "이거 매수필 돼?"
+→ "이거" = AAPL (명확)
+
+User: "TSLA도 봐줘"
+Agent: [TSLA 분석]
+
+User: "이건 좀 위험해 보이는데?"
+→ "이건" = TSLA (마지막 언급)
+→ But: 이전 대화 맥락 고려 → "TSLA의 리스크를 말씀하시는 건가요?"
+```
+
+**충돌 해결**
+```
+User: "반도체 중에 좋은 거 있어?"
+Agent: [반도체 섹터 분석] 현재 주제: semiconductors
+
+User: "그런데 AAPL은?"  # 섹터 → 티커 전환
+→ 토픽 스택: [AAPL, semiconductors]
+→ "AAPL을 반도체 섹터 맥락에서 볼까요? 아니면 개별 종목으로?"
+```
+
+### 3.4 Agent 판단 로직
+
+**컨텍스트 유지 결정 트리**
+```
+새 메시지 도착
+├── 티커/섹터 언급 있음?
+│   ├── 예 → 해당 주제로 전환
+│   │         └── 이전 주제는 스택에 저장
+│   └── 아니오 → 현재 주제 유지
+│
+├── 대명사 있음?
+│   ├── "이거/이것/이 종목" → 마지막 티커
+│   ├── "전에 본 것" → 토픽 스택 검색
+│   ├── "다른 거" → 현재 주제 제외한 스택 제안
+│   └── 모호함 → 확인 질문
+│
+├── 의도 변화 감지?
+│   ├── "간단히" → quick으로 전환
+│   ├── "자세히" → deep으로 전환
+│   └── "비교해줘" → 비교 모드
+│
+└── 10분 경과?
+    ├── 예 → "AAPL에 대해 계속 이야기하고 있었어요. 맞나요?"
+    └── 아니오 → 무음으로 복원
+```
+
+**리셋 조건**
+| 조건 | 동작 |
+|------|------|
+| `/reset` 명령 | 컨텍스트 즉시 클리어 |
+| 24시간 경과 | 세션 아카이브, 새 세션 시작 |
+| "새로 시작하자" | 컨텍스트 클리어 + 확인 |
+| 주제 완전 변경 (섹터↔포트폴리오) | 부드러운 전환 + 이전 주제 스택 저장 |
 
 ---
 
