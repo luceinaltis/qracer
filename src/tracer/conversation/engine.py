@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from tracer.conversation.intent import Intent, IntentParser
-from tracer.data.registry import DataRegistry
+from tracer.data.registry import DataRegistry, build_registry
 from tracer.llm.providers import CompletionRequest, CompletionResponse, Message, Role
 from tracer.llm.registry import LLMRegistry
 from tracer.models import ToolResult
@@ -305,11 +305,13 @@ class ConversationEngine:
     def __init__(
         self,
         llm_registry: LLMRegistry,
-        data_registry: DataRegistry,
+        data_registry: DataRegistry | None = None,
         *,
         max_iterations: int = MAX_ITERATIONS,
         confidence_threshold: float = CONFIDENCE_THRESHOLD,
     ) -> None:
+        if data_registry is None:
+            data_registry = build_registry()
         self._intent_parser = IntentParser(llm_registry)
         self._analysis_loop = AnalysisLoop(
             llm_registry,
