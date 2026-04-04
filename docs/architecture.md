@@ -77,7 +77,7 @@ Project-local and user configs merge per file: `./.qracer/providers.toml` define
 
 ## Provider Plugin System
 
-Built-in adapters and external plugins share the same `ProviderPlugin` protocol:
+Built-in adapters and external plugins share the same `ProviderPlugin` protocol. Lifecycle methods (`initialize`, `health_check`, `shutdown`) require DataRegistry updates — tracked separately from current implementation.
 
 ```python
 class ProviderPlugin(Protocol):
@@ -107,7 +107,7 @@ External plugins register via Python entry points:
 bloomberg = "qracer_bloomberg.adapter:BloombergAdapter"
 ```
 
-On startup the registry scans entry points, loads `providers.toml` config, checks credentials, and registers enabled providers:
+On startup the registry scans entry points, loads `providers.toml` config, checks credentials, and registers enabled providers. This replaces the current hardcoded `_build_registries()` approach — significant implementation work tracked separately.
 
 ```text
 App start
@@ -155,9 +155,9 @@ For Live Mode, Tracer needs sub-second price data and streaming news:
 | Alternative | Finnhub | REST | SEC EDGAR |
 | Earnings calendar | Finnhub | REST | FMP |
 | Institutional holdings | SEC EDGAR | REST | FMP |
-| Options flow | Unusual Whales | REST | Tradier (plugin) |
-| Short interest | FINRA | REST | Ortex (plugin) |
-| ETF flows | ETF.com | REST | — (plugin) |
+| Options flow (planned) | Unusual Whales | REST | Tradier (plugin) |
+| Short interest (planned) | FINRA | REST | Ortex (plugin) |
+| ETF flows (planned) | ETF.com | REST | — (plugin) |
 
 WebSocket connections are opened on session start during market hours and closed on session end. REST fallback activates automatically if WebSocket disconnects.
 

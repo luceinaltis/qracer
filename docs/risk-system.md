@@ -84,7 +84,7 @@ If a recommendation would breach portfolio limits, the risk module either reduce
 
 ## Autonomous Mode Integration
 
-During autonomous monitoring (see [autonomous-mode.md](autonomous-mode.md)), the risk module triggers alerts when:
+During autonomous monitoring (autonomous mode, planned), the risk module triggers alerts when:
 
 - Portfolio drawdown exceeds `max_drawdown_alert_pct`
 - Single position grows beyond `max_single_position_pct` (due to price movement)

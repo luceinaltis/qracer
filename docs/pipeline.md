@@ -77,13 +77,13 @@ Screening → Macro Regime → Cross-Market Discovery → Consensus Mapping
 - Output: ranked list with risk assessment
 - Agent: **strategist**
 
-### Step 7: Trade Thesis Generation
+### Step 7: Trade Thesis Generation (planned)
 - Convert analysis into structured, actionable output
 - Output fields: entry zone, target price, stop-loss, risk/reward ratio, catalyst + date, conviction (1-10)
 - Conviction score drives position sizing suggestion
 - Agent: **strategist**
 
-### Step 8: Risk Check
+### Step 8: Risk Check (planned)
 - Consult risk module (see [risk-system.md](risk-system.md)) before finalizing recommendation
 - Check portfolio exposure: sector concentration, correlation to existing holdings, beta impact
 - Adjust position sizing based on current portfolio state
