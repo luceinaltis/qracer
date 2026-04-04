@@ -85,9 +85,7 @@ class TestMergedTomlLoading:
         user_qracer: Path,
         project_qracer: Path,
     ) -> None:
-        (user_qracer / "config.toml").write_text(
-            'default_mode = "deep"\nllm_provider = "claude"\n'
-        )
+        (user_qracer / "config.toml").write_text('default_mode = "deep"\nllm_provider = "claude"\n')
         (project_qracer / "config.toml").write_text('default_mode = "quick"\n')
 
         data = _load_merged_toml("config.toml", [project_qracer, user_qracer])
@@ -131,9 +129,7 @@ class TestCredentials:
 class TestLoadConfig:
     def test_defaults_when_no_dirs(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("tracer.config.loader.resolve_config_dirs", lambda: [])
-        monkeypatch.setattr(
-            "tracer.config.loader._load_credentials", lambda: {}
-        )
+        monkeypatch.setattr("tracer.config.loader._load_credentials", lambda: {})
         cfg = load_config(force_reload=True)
         assert isinstance(cfg, QracerConfig)
         assert cfg.app.default_mode == "quick"
@@ -141,18 +137,14 @@ class TestLoadConfig:
 
     def test_lazy_caching(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("tracer.config.loader.resolve_config_dirs", lambda: [])
-        monkeypatch.setattr(
-            "tracer.config.loader._load_credentials", lambda: {}
-        )
+        monkeypatch.setattr("tracer.config.loader._load_credentials", lambda: {})
         cfg1 = load_config(force_reload=True)
         cfg2 = load_config()
         assert cfg1 is cfg2
 
     def test_force_reload(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("tracer.config.loader.resolve_config_dirs", lambda: [])
-        monkeypatch.setattr(
-            "tracer.config.loader._load_credentials", lambda: {}
-        )
+        monkeypatch.setattr("tracer.config.loader._load_credentials", lambda: {})
         cfg1 = load_config(force_reload=True)
         cfg2 = load_config(force_reload=True)
         assert cfg1 is not cfg2
@@ -164,18 +156,12 @@ class TestLoadConfig:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # User-level config
-        (user_qracer / "config.toml").write_text(
-            'default_mode = "deep"\nllm_provider = "claude"\n'
-        )
+        (user_qracer / "config.toml").write_text('default_mode = "deep"\nllm_provider = "claude"\n')
         (user_qracer / "providers.toml").write_text(
-            "[providers.yfinance]\nenabled = true\npriority = 100\ntier = \"hot\"\n"
+            '[providers.yfinance]\nenabled = true\npriority = 100\ntier = "hot"\n'
         )
         (user_qracer / "portfolio.toml").write_text(
-            'currency = "KRW"\n\n'
-            "[[holdings]]\n"
-            'ticker = "AAPL"\n'
-            "shares = 10.0\n"
-            "avg_cost = 150.50\n"
+            'currency = "KRW"\n\n[[holdings]]\nticker = "AAPL"\nshares = 10.0\navg_cost = 150.50\n'
         )
         (user_qracer / "credentials.env").write_text("MY_KEY=secret\n")
 
