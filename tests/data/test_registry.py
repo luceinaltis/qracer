@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from unittest.mock import patch
 
 import pytest
 
@@ -14,6 +15,7 @@ from tracer.data.providers import (
     MacroIndicator,
     MacroProvider,
 )
+from tracer.data.registry import build_registry as _build_registry
 
 
 class FakePriceAdapter:
@@ -112,3 +114,133 @@ class TestDataRegistry:
     def test_get_all_empty_capability(self) -> None:
         registry = DataRegistry()
         assert registry.get_all(PriceProvider) == []
+
+
+class FailingPriceAdapter:
+    """Adapter that always raises on get_price."""
+
+    def get_price(self, ticker: str) -> float:
+        raise RuntimeError("primary down")
+
+    def get_ohlcv(self, ticker: str, start: date, end: date) -> list[OHLCV]:
+        raise RuntimeError("primary down")
+
+
+class SucceedingPriceAdapter:
+    """Adapter that returns a fixed price synchronously."""
+
+    def get_price(self, ticker: str) -> float:
+        return 42.0
+
+    def get_ohlcv(self, ticker: str, start: date, end: date) -> list[OHLCV]:
+        return []
+
+
+class TestGetWithFallback:
+    def test_first_adapter_succeeds(self) -> None:
+        registry = DataRegistry()
+        registry.register("good", SucceedingPriceAdapter(), [PriceProvider])
+        registry.register("also_good", SucceedingPriceAdapter(), [PriceProvider])
+        result = registry.get_with_fallback(PriceProvider, "get_price", "AAPL")
+        assert result == 42.0
+
+    def test_first_fails_second_succeeds(self) -> None:
+        registry = DataRegistry()
+        registry.register("bad", FailingPriceAdapter(), [PriceProvider])
+        registry.register("good", SucceedingPriceAdapter(), [PriceProvider])
+        result = registry.get_with_fallback(PriceProvider, "get_price", "AAPL")
+        assert result == 42.0
+
+    def test_all_fail_raises_last(self) -> None:
+        registry = DataRegistry()
+        registry.register("bad1", FailingPriceAdapter(), [PriceProvider])
+        registry.register("bad2", FailingPriceAdapter(), [PriceProvider])
+        with pytest.raises(RuntimeError, match="primary down"):
+            registry.get_with_fallback(PriceProvider, "get_price", "AAPL")
+
+    def test_missing_capability_raises(self) -> None:
+        registry = DataRegistry()
+        with pytest.raises(KeyError, match="No adapter registered"):
+            registry.get_with_fallback(PriceProvider, "get_price", "AAPL")
+
+    def test_kwargs_forwarded(self) -> None:
+        class KwargAdapter:
+            def fetch(self, ticker: str, period: str = "1d") -> str:
+                return f"{ticker}-{period}"
+
+        registry = DataRegistry()
+        registry.register("kw", KwargAdapter(), [PriceProvider])
+        result = registry.get_with_fallback(PriceProvider, "fetch", "AAPL", period="5d")
+        assert result == "AAPL-5d"
+
+
+def _make_provider_cfg(enabled: bool = True, priority: int = 100, tier: str = "warm") -> object:
+    """Create a mock ProviderConfig without importing tracer.config."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(enabled=enabled, priority=priority, tier=tier, api_key_env=None)
+
+
+def _make_config(providers: dict | None = None) -> object:
+    """Create a mock QracerConfig without importing tracer.config."""
+    from types import SimpleNamespace
+
+    prov_ns = SimpleNamespace(providers=providers or {})
+    return SimpleNamespace(providers=prov_ns)
+
+
+class TestBuildRegistry:
+    def test_build_with_yfinance_enabled(self) -> None:
+        """build_registry loads yfinance when config says enabled."""
+        mock_config = _make_config(
+            {"yfinance": _make_provider_cfg(enabled=True, priority=100, tier="hot")}
+        )
+
+        with patch("tracer.data.registry._load_config_lazy", return_value=mock_config):
+            registry = _build_registry()
+
+        # YfinanceAdapter should be registered for PriceProvider
+        adapters = registry.get_all(PriceProvider)
+        assert len(adapters) == 1
+        assert adapters[0][0] == "yfinance"
+
+    def test_build_with_disabled_provider(self) -> None:
+        """Disabled providers are not registered."""
+        mock_config = _make_config(
+            {"yfinance": _make_provider_cfg(enabled=False, priority=100, tier="hot")}
+        )
+
+        with patch("tracer.data.registry._load_config_lazy", return_value=mock_config):
+            registry = _build_registry()
+
+        assert registry.get_all(PriceProvider) == []
+
+    def test_build_with_unknown_provider(self) -> None:
+        """Unknown provider names are skipped without error."""
+        mock_config = _make_config(
+            {"unknown_source": _make_provider_cfg(enabled=True, priority=50)}
+        )
+
+        with patch("tracer.data.registry._load_config_lazy", return_value=mock_config):
+            registry = _build_registry()
+
+        assert registry.capabilities() == []
+
+    def test_build_empty_config(self) -> None:
+        """Empty providers config returns empty registry."""
+        with patch("tracer.data.registry._load_config_lazy", return_value=_make_config()):
+            registry = _build_registry()
+
+        assert registry.capabilities() == []
+
+    def test_build_priority_order(self) -> None:
+        """Providers are registered in priority order (lower number first)."""
+        mock_config = _make_config(
+            {"yfinance": _make_provider_cfg(enabled=True, priority=50, tier="warm")}
+        )
+
+        with patch("tracer.data.registry._load_config_lazy", return_value=mock_config):
+            registry = _build_registry()
+
+        adapters = registry.get_all(PriceProvider)
+        assert len(adapters) == 1
