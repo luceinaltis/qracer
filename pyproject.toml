@@ -5,6 +5,7 @@ description = "Conversational investment agent for discovering alpha in global s
 requires-python = ">=3.12"
 dependencies = [
   "yfinance>=0.2.0",
+  "duckdb>=1.2.0",
 ]
 
 [dependency-groups]
