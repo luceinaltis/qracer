@@ -1,95 +1,95 @@
 # User Experience
 
-qracer의 사용자 경험 설계 — 자연어 중심의 대화 인터페이스와 Agent 협업 방식.
+qracer user experience design — natural language interface and Agent collaboration.
 
 ---
 
-## 1. 인터페이스 철학
+## 1. Interface Philosophy
 
-**자연어가 기본, 명령어는 예외**
+**Natural language first, commands as exception**
 
-사용자는 생각하는 대로 말하고, Agent가 이해해서 행동한다.
+Users speak naturally, Agent understands and acts.
 
-| 방식 | 사용 상황 | 예시 |
-|------|-----------|------|
-| **자연어** | 모든 투자 분석, 질문, 탐색 | "AAPL 분석해줘", "반도체 섹터 어때?" |
-| **명령어** | 시스템 관리만 | `/status`, `/config` |
-
----
-
-## 2. 자연어 인터페이스
-
-### 입력 패턴
-
-**티커 언급**
-```
-"AAPL 어때?"
-"애플 주가 봐줘"
-"TSLA랑 NVDA 비교해줘"
-```
-
-**섹터/테마 언급**
-```
-"반도체 섹터 분석해줘"
-"AI 관련주 뭐 있어?"
-"2차전지 테마 알려줘"
-```
-
-**포트폴리오 관련**
-```
-"내 포트폴리오 리스크 확인해줘"
-"지금 포트폴리오 어때?"
-"새로 산 종목 리스크 체크해줘"
-```
-
-**복합 질문**
-```
-"PER 20 이하인 반도체 종목 중에 매수할 만한 거 있어?"
-"내 포트폴리오랑 상관관계 높은 종목 알려줘"
-"다음 주 실적 발표하는 종목들 뭐 있어?"
-```
-
-### Agent 응답 패턴
-
-**확인이 필요할 때**
-```
-User: "매수할 종목 추천해줘"
-Agent: "어떤 섹터나 테마를 원하세요? 아니면 전체 시장에서 찾아볼까요?"
-```
-
-**추가 정보가 필요할 때**
-```
-User: "이 종목 어때?"
-Agent: "어떤 종목을 말씀하시는 건가요? 최근에 언급된 AAPL, TSLA, NVDA 중 하나일까요?"
-```
-
-**명확하지 않을 때**
-```
-User: "좋아 보여"
-Agent: "AAPL이 맞나요? 매수 관점에서 분석해드릴까요?"
-```
+| Interface | Use Case | Example |
+|-----------|----------|---------|
+| **Natural Language** | All investment analysis, questions, exploration | "Analyze AAPL", "How's the semiconductor sector?" |
+| **Commands** | System management only | `/status`, `/config` |
 
 ---
 
-## 3. 대화 맥락 유지
+## 2. Natural Language Interface
 
-### 3.1 기술적 구현
+### Input Patterns
 
-**메모리 구조**
+**Ticker Mention**
+```
+"How's AAPL?"
+"Show me Apple stock"
+"Compare TSLA and NVDA"
+```
+
+**Sector/Theme Mention**
+```
+"Analyze semiconductor sector"
+"What AI stocks are there?"
+"Tell me about EV battery theme"
+```
+
+**Portfolio Related**
+```
+"Check my portfolio risk"
+"How's my portfolio doing?"
+"Risk check my new position"
+```
+
+**Complex Questions**
+```
+"Any semiconductor stocks with PE under 20 worth buying?"
+"What correlates highly with my portfolio?"
+"Which stocks report earnings next week?"
+```
+
+### Agent Response Patterns
+
+**When Clarification Needed**
+```
+User: "Recommend stocks to buy"
+Agent: "Which sector or theme? Or search the whole market?"
+```
+
+**When Additional Info Needed**
+```
+User: "How's this stock?"
+Agent: "Which stock? Recently mentioned: AAPL, TSLA, NVDA?"
+```
+
+**When Ambiguous**
+```
+User: "Looks good"
+Agent: "AAPL, right? Analysis from buy perspective?"
+```
+
+---
+
+## 3. Conversation Context
+
+### 3.1 Technical Implementation
+
+**Memory Structure**
 ```
 Session Memory (Redis/SQLite)
 ├── session_id: uuid
 ├── user_id: telegram_id
 ├── created_at: timestamp
 ├── last_activity: timestamp
-├── context_ttl: 600s (10분)
+├── context_ttl: 600s (10min)
 │
 ├── current_topic:
 │   ├── type: ticker | sector | theme | portfolio
 │   ├── value: "AAPL" | "semiconductors" | "ai"
 │   └── mentioned_at: timestamp
 │
-├── topic_stack: [  # 최근 5개
+├── topic_stack: [  # last 5
 │   {type, value, mentioned_at},
 │   ...
 │]
@@ -105,234 +105,234 @@ Session Memory (Redis/SQLite)
     └── preferred_sectors: [...]
 ```
 
-**저장 정책**
-| 데이터 | 저장 위치 | TTL | 복원 |
-|--------|-----------|-----|------|
-| 활성 세션 | Redis | 10분 | 자동 |
-| 토픽 히스토리 | SQLite | 30일 | 대화 재개 시 |
-| 사용자 설정 | SQLite | 영구 | 로그인 시 |
+**Storage Policy**
+| Data | Storage | TTL | Recovery |
+|------|---------|-----|----------|
+| Active Session | Redis | 10min | Auto |
+| Topic History | SQLite | 30days | On session resume |
+| User Preferences | SQLite | Permanent | On login |
 
-**만료 및 갱신**
-- 매 메시지마다 `last_activity` 업데이트
-- 10분 무응답 → 세션 펜딩 상태 (복원 가능)
-- 24시간 무응답 → 세션 아카이브 (히스토리는 유지)
+**Expiration & Renewal**
+- Update `last_activity` on every message
+- 10min no response → pending state (recoverable)
+- 24hrs no response → archive session (history kept)
 
-### 3.2 사용자 경험 흐름
+### 3.2 User Experience Flow
 
-**정상 흐름 예시**
+**Normal Flow Example**
 ```
-User:  "AAPL 분석해줘"
-Agent: [AAPL 심층 분석 제공]
-       현재 주제: AAPL | 깊이: deep
+User:  "Analyze AAPL"
+Agent: [Provides AAPL deep analysis]
+       Current: AAPL | Depth: deep
 
-User:  "PER이 높아 보이는데?"
-Agent: [AAPL PER 컨텍스트 설명]
-       현재 주제: AAPL | 깊이: deep (유지)
+User:  "PE looks high?"
+Agent: [Explains AAPL PE context]
+       Current: AAPL | Depth: deep (maintained)
 
-User:  "그럼 매수 타이밍 언제가 좋을까?"
-Agent: [AAPL 진입 시점 분석]
-       현재 주제: AAPL | 깊이: deep (유지)
+User:  "When's good entry timing?"
+Agent: [Analyzes AAPL entry points]
+       Current: AAPL | Depth: deep (maintained)
 
-User:  "TSLA는 어때?"
-Agent: [TSLA 심층 분석 제공]
-       현재 주제: TSLA | 토픽 스택: [TSLA, AAPL]
-```
-
-**컨텍스트 전환 예시**
-```
-User:  "AAPL 분석해줘"
-Agent: [AAPL 분석] 현재 주제: AAPL
-
-User:  "실시간으로 간단히 알려줘"  # 의도 전환
-Agent: "AAPL을 실시간 요약으로 바꿀까요? 아니면 다른 종목?"
-
-User:  "아니 AAPL 맞아"
-Agent: [AAPL 실시간 요약] 깊이: quick으로 변경
+User:  "How about TSLA?"
+Agent: [Provides TSLA deep analysis]
+       Current: TSLA | Stack: [TSLA, AAPL]
 ```
 
-### 3.3 복잡한 상황 처리
-
-**여러 주제 섞일 때**
+**Context Switch Example**
 ```
-User: "AAPL이랑 TSLA 중에 뭐가 나을까?"
-→ 토픽 스택: [AAPL, TSLA] (동등한 우선순위)
-→ 비교 모드 활성화
+User:  "Analyze AAPL"
+Agent: [Analysis] Current: AAPL
 
-User: "그런데 NVDA도 괜찮아 보여"
-→ 토픽 스택: [NVDA, AAPL, TSLA]
-→ "세 종목 모두 비교할까요? 아니면 NVDA만 추가 분석할까요?"
-```
+User:  "Show me real-time summary"  # intent switch
+Agent: "Switch AAPL to real-time summary? Or different stock?"
 
-**모호한 대명사**
-```
-User: "AAPL 분석해줘"
-Agent: [분석 제공]
-
-User: "이거 매수필 돼?"
-→ "이거" = AAPL (명확)
-
-User: "TSLA도 봐줘"
-Agent: [TSLA 분석]
-
-User: "이건 좀 위험해 보이는데?"
-→ "이건" = TSLA (마지막 언급)
-→ But: 이전 대화 맥락 고려 → "TSLA의 리스크를 말씀하시는 건가요?"
+User:  "No, AAPL is right"
+Agent: [AAPL real-time summary] Depth: quick
 ```
 
-**충돌 해결**
-```
-User: "반도체 중에 좋은 거 있어?"
-Agent: [반도체 섹터 분석] 현재 주제: semiconductors
+### 3.3 Complex Scenario Handling
 
-User: "그런데 AAPL은?"  # 섹터 → 티커 전환
-→ 토픽 스택: [AAPL, semiconductors]
-→ "AAPL을 반도체 섹터 맥락에서 볼까요? 아니면 개별 종목으로?"
+**Multiple Topics Mixed**
+```
+User: "Which is better, AAPL or TSLA?"
+→ Stack: [AAPL, TSLA] (equal priority)
+→ Comparison mode activated
+
+User: "But NVDA also looks good"
+→ Stack: [NVDA, AAPL, TSLA]
+→ "Compare all three? Or just add NVDA analysis?"
 ```
 
-### 3.4 Agent 판단 로직
-
-**컨텍스트 유지 결정 트리**
+**Ambiguous Pronouns**
 ```
-새 메시지 도착
-├── 티커/섹터 언급 있음?
-│   ├── 예 → 해당 주제로 전환
-│   │         └── 이전 주제는 스택에 저장
-│   └── 아니오 → 현재 주제 유지
+User: "Analyze AAPL"
+Agent: [Provides analysis]
+
+User: "Is this a buy?"
+→ "this" = AAPL (clear)
+
+User: "Check TSLA too"
+Agent: [TSLA analysis]
+
+User: "This looks risky"
+→ "This" = TSLA (last mentioned)
+→ But: consider context → "TSLA's risk you're referring to?"
+```
+
+**Conflict Resolution**
+```
+User: "Any good semiconductor stocks?"
+Agent: [Semiconductor sector analysis] Current: semiconductors
+
+User: "What about AAPL?"  # sector → ticker switch
+→ Stack: [AAPL, semiconductors]
+→ "View AAPL in semiconductor context? Or as individual stock?"
+```
+
+### 3.4 Agent Decision Logic
+
+**Context Retention Decision Tree**
+```
+New message arrives
+├── Ticker/sector mentioned?
+│   ├── Yes → Switch to that topic
+│   │         └── Save previous to stack
+│   └── No → Maintain current topic
 │
-├── 대명사 있음?
-│   ├── "이거/이것/이 종목" → 마지막 티커
-│   ├── "전에 본 것" → 토픽 스택 검색
-│   ├── "다른 거" → 현재 주제 제외한 스택 제안
-│   └── 모호함 → 확인 질문
+├── Pronoun present?
+│   ├── "this/it/this stock" → last ticker
+│   ├── "previous one" → search topic stack
+│   ├── "another one" → suggest from stack excluding current
+│   └── Ambiguous → clarification question
 │
-├── 의도 변화 감지?
-│   ├── "간단히" → quick으로 전환
-│   ├── "자세히" → deep으로 전환
-│   └── "비교해줘" → 비교 모드
+├── Intent change detected?
+│   ├── "quickly" → switch to quick
+│   ├── "in detail" → switch to deep
+│   └── "compare" → comparison mode
 │
-└── 10분 경과?
-    ├── 예 → "AAPL에 대해 계속 이야기하고 있었어요. 맞나요?"
-    └── 아니오 → 무음으로 복원
+└── 10min elapsed?
+    ├── Yes → "We were discussing AAPL. Continue?"
+    └── No → Silent recovery
 ```
 
-**리셋 조건**
-| 조건 | 동작 |
-|------|------|
-| `/reset` 명령 | 컨텍스트 즉시 클리어 |
-| 24시간 경과 | 세션 아카이브, 새 세션 시작 |
-| "새로 시작하자" | 컨텍스트 클리어 + 확인 |
-| 주제 완전 변경 (섹터↔포트폴리오) | 부드러운 전환 + 이전 주제 스택 저장 |
+**Reset Conditions**
+| Condition | Action |
+|-----------|--------|
+| `/reset` command | Clear context immediately |
+| 24hrs elapsed | Archive session, start new |
+| "Let's start fresh" | Clear context + confirm |
+| Topic completely changed (sector↔portfolio) | Smooth transition + save to stack |
 
-### 3.5 모르는 주제 처리
+### 3.5 Unknown Topic Handling
 
-**검색 우선순위**
+**Search Priority**
 ```
-모르는 주제 "XYZ" 등장
+Unknown topic "XYZ" appears
   ↓
-1. 로컬 컨텍스트 (즉시, <100ms)
-   - 현재 토픽 스택
-   - 세션 메모리
+1. Local Context (instant, <100ms)
+   - Current topic stack
+   - Session memory
    
-2. 임베딩 검색 (빠름, <500ms)
-   - 과거 대화 기록
-   - 저장된 토픽 메타데이터
+2. Embedding Search (fast, <500ms)
+   - Past conversation history
+   - Stored topic metadata
    
-3. 웹 서치 (느림, 1-3s)
-   - 티커/섹터 정의
-   - 최신 뉴스/정보
+3. Web Search (slow, 1-3s)
+   - Ticker/sector definitions
+   - Latest news/info
    
-4. 인정
-   - "잘 모르겠어요"
+4. Admit
+   - "I'm not sure"
 ```
 
-**처리 예시**
+**Handling Example**
 ```
-User: "QuantumScape가 뭔데?"
+User: "What's QuantumScape?"
   ↓
-[로컬/임베딩 검색] 없음
-[웹 서치] "QuantumScape는 고체 상태 배터리 개발 기업..."
+[Local/embedding search] None
+[Web search] "QuantumScape is solid-state battery development company..."
   ↓
-Agent: "QuantumScape는 고체 상태 배터리를 개발하는 기업이에요. 
-        최근 주가는... [웹 검색 결과 요약 + 티커 정보]"
+Agent: "QuantumScape develops solid-state batteries. 
+        Recent stock price... [web search summary + ticker info]"
 ```
 
-**응답 패턴**
-| 상황 | 응답 |
-|------|------|
-| 로컬/임베딩에서 찾음 | 바로 답변 + 출처 언급 ("이전에 말씀하신...") |
-| 웹 서치로 찾음 | 요약 답변 + "검색필 보니..." |
-| 못 찾음 | "잘 모르겠어요. 더 알려주시겠어요?" |
+**Response Patterns**
+| Situation | Response |
+|-----------|----------|
+| Found in local/embedding | Direct answer + source mention ("As you mentioned before...") |
+| Found via web search | Summary answer + "According to search..." |
+| Not found | "I'm not sure. Can you tell me more?" |
 
 ---
 
-## 4. 시스템 명령어
+## 4. System Commands
 
-관리용 명령어만 제공. 투자 분석은 자연어로.
+System management commands only. Investment analysis via natural language.
 
 | Command | Description |
 |---------|-------------|
-| `/status` | 시스템 상태 확인 |
-| `/config` | 설정 보기/변경 |
-| `/help` | 도움말 |
+| `/status` | Check system status |
+| `/config` | View/change settings |
+| `/help` | Help |
 
 ---
 
-## 5. 대시보드 (Dashboard)
+## 5. Dashboard
 
-qracer의 메인 인터페이스. 왼쪽 사이드바 메뉴 + 오른쪽 정보 패널 구조.
+qracer main interface. Left sidebar menu + right info panel structure.
 
-### 레이아웃
+### Layout
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  qracer                                                 │
 ├──────────┬──────────────────────────────────────────────┤
-│  (사이드바) │              (메인 패널)                      │
-│          │                                                │
-│  DASH    │  - 선택한 메뉴에 따른 정보 표시                │
-│  Overview│                                                │
-│  Portfolio│                                                │
-│  Watchlist│                                                │
-│  Alerts   │                                                │
-│          │                                                │
-│  CHAT    │                                                │
-│  New Chat│                                                │
-│  History │                                                │
-│          │                                                │
-│  SETTINGS│                                                │
-│  General │                                                │
-│  Providers│                                               │
-│  Notifications│                                           │
-│          │                                                │
+│ (sidebar)│              (main panel)                    │
+│          │                                              │
+│  DASH    │  - Display info based on selected menu       │
+│  Overview│                                              │
+│  Portfolio│                                             │
+│  Watchlist│                                             │
+│  Alerts   │                                             │
+│          │                                              │
+│  CHAT    │                                              │
+│  New Chat│                                              │
+│  History │                                              │
+│          │                                              │
+│  SETTINGS│                                              │
+│  General │                                              │
+│  Providers│                                             │
+│  Notifications│                                          │
+│          │                                              │
 └──────────┴──────────────────────────────────────────────┘
 ```
 
-### 사이드바 메뉴
+### Sidebar Menu
 
-**DASH 섹션**
-| 메뉴 | 내용 | 실시간 갱신 |
-|------|------|-------------|
-| Overview | 포트폴리오 요약 + 시장 개요 + 알림 현황 | 5초 |
-| Portfolio | 보유 종목 상세 (손익, 비중, 리스크) | 5초 |
-| Watchlist | 관심 종목 리스트 (가격, 변동%) | 5초 |
-| Alerts | 활성 알림 목록 + 트리거 이력 | 즉시 |
+**DASH Section**
+| Menu | Content | Real-time Update |
+|------|---------|------------------|
+| Overview | Portfolio summary + market overview + alerts status | 5s |
+| Portfolio | Holdings detail (P&L, weight, risk) | 5s |
+| Watchlist | Watchlist (price, change%) | 5s |
+| Alerts | Active alerts list + trigger history | Instant |
 
-**CHAT 섹션**
-| 메뉴 | 기능 |
-|------|------|
-| New Chat | Agent(luce)와 새 대화 세션 시작 |
-| History | 과거 대화 목록, 검색, 재개 |
+**CHAT Section**
+| Menu | Function |
+|------|----------|
+| New Chat | Start new session with Agent (luce) |
+| History | Past conversation list, search, resume |
 
-**SETTINGS 섹션**
-| 메뉴 | 설정 항목 |
-|------|-----------|
-| General | 테마, 언어, 기본 분석 깊이 |
-| Providers | 데이터 소스 (Finnhub, FRED 등) API 키 관리 |
-| Notifications | 알림 채널 (Telegram, Email), 임계값 설정 |
+**SETTINGS Section**
+| Menu | Settings |
+|------|----------|
+| General | Theme, language, default analysis depth |
+| Providers | Data sources (Finnhub, FRED, etc.) API key management |
+| Notifications | Notification channels (Telegram, Email), threshold settings |
 
-### 메인 패널 구성
+### Main Panel Components
 
-**Overview 예시**
+**Overview Example**
 ```
 ┌────────────────────────────────────────┐
 │  Portfolio Summary                     │
@@ -351,145 +351,144 @@ qracer의 메인 인터페이스. 왼쪽 사이드바 메뉴 + 오른쪽 정보 
 └────────────────────────────────────────┘
 ```
 
-### 상호작용 패턴
+### Interaction Patterns
 
-**대시보드 → 대화 전환**
+**Dashboard → Chat Transition**
 ```
-1. Overview에서 AAPL 클릭
-2. 자동으로 New Chat 열림
-3. Agent: "AAPL에 대해 알려드릴까요?"
-4. 사용자 자연어 입력으로 대화 진행
+1. Click AAPL in Overview
+2. Auto opens New Chat
+3. Agent: "Tell you about AAPL?"
+4. User types naturally to continue conversation
 ```
 
-**대화 중 대시보드 참조**
+**Chat Referencing Dashboard**
 ```
-User: "내 포트폴리오 리스크 좀 봐줘"
-Agent: [Portfolio 리스크 분석 제공]
-      "Overview 탭에서도 실시간 리스크 게이지를 
-       확인하실 수 있어요."
+User: "Check my portfolio risk"
+Agent: [Provides portfolio risk analysis]
+      "You can also check real-time risk gauge in Overview tab."
 ```
 
 ---
 
-## 6. 시각화
+## 6. Visualization
 
-### 출력 포맷 선택
+### Output Format Selection
 
-| 상황 | 포맷 | 특징 |
-|------|------|------|
-| 빠른 확인 | Summary Card | 3줄 이내, 핵심만 |
-| 상세 분석 | Structured Report | 섹션별 구분 |
-| 비교 | Side-by-side Table | 여러 종목 |
-| 시계열 | Timeline | 이벤트 순서 |
+| Situation | Format | Characteristics |
+|-----------|--------|-----------------|
+| Quick check | Summary Card | Under 3 lines, essentials only |
+| Detailed analysis | Structured Report | Sectioned |
+| Comparison | Side-by-side Table | Multiple tickers |
+| Timeline | Timeline | Event sequence |
 
-### 모바일 최적화
+### Mobile Optimization
 
-- 80자 너비 기준
-- 티커는 **bold**로 강조
-- 숫자는 천 단위 구분자
-- 색상은 텍스트 기호: 🔴 🟡 🟢
+- 80 character width standard
+- Tickers in **bold**
+- Thousands separators for numbers
+- Color symbols: 🔴 🟡 🟢
 
 ---
 
-## 7. 설치 (qracer install)
+## 7. Install (qracer install)
 
-### 요구사항
+### Requirements
 
 - Python 3.10+
-- pip 또는 uv
+- pip or uv
 
-### 설치 명령
+### Install Command
 
 ```bash
-# pip로 설치
+# Install with pip
 pip install qracer
 
-# uv로 설치 (권장, 더 빠름)
+# Install with uv (recommended, faster)
 uv add qracer
 ```
 
-### 첫 실행 (qracer install)
+### First Run (qracer install)
 
-설치 후 `qracer install`로 초기 설정:
+After install, run `qracer install` for initial setup:
 
 ```
 $ qracer install
 
-🎯 qracer 설치를 시작합니다.
+🎯 Starting qracer installation.
 
-1. 설정 디렉토리 생성
-   ~/.qracer/ 디렉토리를 생성합니다... [OK]
+1. Create config directory
+   Creating ~/.qracer/... [OK]
 
-2. 데이터 소스 설정
-   Finnhub API 키를 입력하세요 (선택): 
-   FRED API 키를 입력하세요 (선택):
+2. Data source setup
+   Enter Finnhub API key (optional): 
+   Enter FRED API key (optional):
 
-3. Telegram 알림 설정 (선택)
+3. Telegram notification setup (optional)
    Bot Token: 
    Chat ID:
 
-4. 포트폴리오 초기 설정
-   기본 통화 (USD/KRW): USD
+4. Portfolio initial setup
+   Base currency (USD/KRW): USD
 
-✅ 설치 완료! 'qracer --help'로 명령어를 확인하세요.
+✅ Install complete! Check commands with 'qracer --help'.
 ```
 
-### 설치 후 첫 실행
+### Post-Install First Run
 
 ```bash
 $ qracer
 
-🎯 qracer에 오신 것을 환영합니다!
+🎯 Welcome to qracer!
 
-저는 luce, 당신의 트레이딩 리서치 파트너예요.
+I'm luce, your trading research partner.
 
-시작하기:
-• "AAPL 분석해줘" — 종목 심층 분석
-• "내 포트폴리오 확인해줘" — 포트폴리오 관리
-• "반도체 섹터 어때?" — 섹터 분석
+Get started:
+• "Analyze AAPL" — Deep stock analysis
+• "Check my portfolio" — Portfolio management
+• "How's semiconductor sector?" — Sector analysis
 
-무엇을 도와드릴까요?
+How can I help?
 ```
 
-### 점진적 기능 소개
+### Progressive Feature Introduction
 
-| 단계 | 조건 | 소개 내용 |
-|------|------|-----------|
-| 1 | 첫 사용 | 기본 질문 패턴 3가지 |
-| 2 | 5회 이상 대화 | 알림 설정, 포트폴리오 기능 |
-| 3 | 포트폴리오 생성 | 리스크 모듈, 포지션 사이징 |
-| 4 | 20회 이상 분석 | 고급 필터, 복합 질문 |
+| Stage | Condition | Introduction |
+|-------|-----------|--------------|
+| 1 | First use | 3 basic question patterns |
+| 2 | 5+ conversations | Alert settings, portfolio features |
+| 3 | Portfolio created | Risk module, position sizing |
+| 4 | 20+ analyses | Advanced filters, complex questions |
 
 ---
 
-## 8. Agent 협업 원칙
+## 8. Agent Collaboration Principles
 
-### 할 수 있는 것
+### Can Do
 
-- 실시간 및 과거 데이터 조회
-- 기술적/기본적 분석
-- 리스크 평가 및 포지션 사이징
-- 포트폴리오 모니터링 및 알림
-- 섹터/테마 분석
+- Real-time and historical data lookup
+- Technical/fundamental analysis
+- Risk assessment and position sizing
+- Portfolio monitoring and alerts
+- Sector/theme analysis
 
-### 할 수 없는 것 (명시)
+### Cannot Do (Explicit)
 
-- 실제 거래 실행
-- 투자 권유 또는 보장
-- 미래 가격 예측
+- Execute actual trades
+- Investment advice or guarantees
+- Future price predictions
 
-### 불확실할 때
+### When Uncertain
 
-> "확실하지 않아요. 더 조사가 필요해요."
+> "I'm not sure. Need more research."
 
-추측보다는 부족함을 인정.
+Admit limitations rather than guess.
 
 ---
 
 ## 9. Design Principles
 
-1. **자연어 우선** — 외울 것 없이 생각하는 대로 말하기
-2. **맥락 인식** — 대화 흐름을 기억하고 이어가기
-3. **점진적 공개** — 복잡한 기능은 단계적으로 소개
-4. **투명성** — 한계를 명확히, 추측하지 않기
-5. **실패 우아하게** — 오류 시 다음 행동 제안
+1. **Natural Language First** — Speak naturally without memorizing
+2. **Context Awareness** — Remember and continue conversation flow
+3. **Progressive Disclosure** — Introduce complex features gradually
+4. **Transparency** — Clear about limitations, no guessing
+5. **Fail Gracefully** — Suggest next action on errors
