@@ -56,9 +56,7 @@ class YfinanceAdapter:
 
     def __init__(self) -> None:
         if not _HAS_YFINANCE:
-            raise ImportError(
-                "yfinance is not installed. Install it with: uv add yfinance"
-            )
+            raise ImportError("yfinance is not installed. Install it with: uv add yfinance")
 
     async def get_price(self, ticker: str) -> float:
         """Get the latest closing price for a ticker."""

@@ -57,9 +57,7 @@ class EngineResponse:
     generated_at: datetime = field(default_factory=datetime.now)
 
 
-async def _invoke_tool(
-    tool_name: str, intent: Intent, registry: DataRegistry
-) -> ToolResult:
+async def _invoke_tool(tool_name: str, intent: Intent, registry: DataRegistry) -> ToolResult:
     """Invoke a single pipeline tool based on the intent context."""
     tickers = intent.tickers
 
@@ -171,9 +169,7 @@ class AnalysisLoop:
             iterations=iterations,
         )
 
-    async def _evaluate(
-        self, intent: Intent, results: list[ToolResult]
-    ) -> tuple[float, list[str]]:
+    async def _evaluate(self, intent: Intent, results: list[ToolResult]) -> tuple[float, list[str]]:
         """Ask the analyst LLM to evaluate confidence and suggest missing tools.
 
         Returns (confidence, list_of_missing_tool_names).
@@ -184,7 +180,7 @@ class AnalysisLoop:
             "answer a financial query.\n"
             "Available tools: price_event, news, insider, macro, fundamentals, "
             "cross_market, memory_search.\n"
-            "Return JSON: {\"confidence\": 0.0-1.0, \"missing_tools\": [...]}\n"
+            'Return JSON: {"confidence": 0.0-1.0, "missing_tools": [...]}\n'
             "confidence = how confident you are the data answers the query.\n"
             "missing_tools = tools not yet called that would improve the answer "
             "(empty list if sufficient).\n"
@@ -206,9 +202,7 @@ class AnalysisLoop:
             )
             parsed = json.loads(response.content)
             confidence = float(parsed.get("confidence", 0.0))
-            missing = [
-                t for t in parsed.get("missing_tools", []) if t in _TOOL_DISPATCH
-            ]
+            missing = [t for t in parsed.get("missing_tools", []) if t in _TOOL_DISPATCH]
             # Don't re-call tools we already have results for.
             already_called = {r.tool for r in results}
             missing = [t for t in missing if t not in already_called]
@@ -230,9 +224,7 @@ class ResponseSynthesizer:
 
     async def synthesize(self, intent: Intent, analysis: AnalysisResult) -> str:
         """Generate the final user-facing response."""
-        evidence = _format_evidence(
-            [r for r in analysis.results if r.success]
-        )
+        evidence = _format_evidence([r for r in analysis.results if r.success])
         failed_tools = [r.tool for r in analysis.results if not r.success]
 
         ticker_str = ", ".join(intent.tickers) if intent.tickers else "general market"
@@ -377,7 +369,6 @@ def _format_evidence(results: list[ToolResult]) -> str:
     sections: list[str] = []
     for r in results:
         sections.append(
-            f"[{r.tool}] source={r.source} stale={r.is_stale}\n"
-            f"{json.dumps(r.data, indent=2)}"
+            f"[{r.tool}] source={r.source} stale={r.is_stale}\n{json.dumps(r.data, indent=2)}"
         )
     return "\n\n".join(sections)

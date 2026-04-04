@@ -32,12 +32,8 @@ def mock_registry() -> LLMRegistry:
 def session_logger(tmp_path: Path) -> SessionLogger:
     logger = SessionLogger(tmp_path / "test.jsonl")
     logger.append(TurnRecord(turn=1, role="user", content="Why did AAPL spike?"))
-    logger.append(
-        TurnRecord(turn=1, role="tool_call", content="Fetching news", tool="fetch_news")
-    )
-    logger.append(
-        TurnRecord(turn=1, role="tool_result", content="Earnings beat", success=True)
-    )
+    logger.append(TurnRecord(turn=1, role="tool_call", content="Fetching news", tool="fetch_news"))
+    logger.append(TurnRecord(turn=1, role="tool_result", content="Earnings beat", success=True))
     logger.append(
         TurnRecord(turn=1, role="assistant", content="AAPL spiked due to earnings.", conviction=8)
     )
@@ -78,9 +74,7 @@ class TestSessionCompactor:
         assert md_path.exists()
         assert md_path.read_text(encoding="utf-8") == result.summary
 
-    async def test_needs_compaction(
-        self, mock_registry: LLMRegistry, tmp_path: Path
-    ) -> None:
+    async def test_needs_compaction(self, mock_registry: LLMRegistry, tmp_path: Path) -> None:
         compactor = SessionCompactor(mock_registry, token_threshold=10)
         logger = SessionLogger(tmp_path / "small.jsonl")
         assert not compactor.needs_compaction(logger)

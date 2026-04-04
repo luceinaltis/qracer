@@ -9,17 +9,15 @@ import pytest
 
 from tracer.agents import Analyst, BaseAgent, Reporter, Researcher, Strategist
 from tracer.data.providers import (
-    AlternativeRecord,
+    OHLCV,
     FundamentalData,
     MacroIndicator,
     NewsArticle,
-    OHLCV,
 )
 from tracer.data.registry import DataRegistry
 from tracer.llm.providers import CompletionRequest, CompletionResponse, Role
 from tracer.llm.registry import LLMRegistry
 from tracer.models import Signal, SignalDirection
-
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -49,9 +47,7 @@ class FakePriceProvider:
         return 150.0
 
     async def get_ohlcv(self, ticker: str, start: date, end: date) -> list[OHLCV]:
-        return [
-            OHLCV(date=date(2024, 1, 1), open=100, high=105, low=99, close=102, volume=1000)
-        ]
+        return [OHLCV(date=date(2024, 1, 1), open=100, high=105, low=99, close=102, volume=1000)]
 
 
 class FakeFundamentalProvider:
@@ -63,9 +59,7 @@ class FakeFundamentalProvider:
 
 class FakeMacroProvider:
     async def get_indicator(self, name: str) -> MacroIndicator:
-        return MacroIndicator(
-            name=name, value=3.5, date=date(2024, 1, 1), source="test", unit="%"
-        )
+        return MacroIndicator(name=name, value=3.5, date=date(2024, 1, 1), source="test", unit="%")
 
 
 class FakeNewsProvider:
@@ -336,7 +330,13 @@ class TestStrategist:
 
     async def test_run_full_pipeline(self) -> None:
         contrarian = [
-            {"ticker": "TSLA", "thesis": "t", "contrarian_angle": "c", "direction": "long", "evidence": []}
+            {
+                "ticker": "TSLA",
+                "thesis": "t",
+                "contrarian_angle": "c",
+                "direction": "long",
+                "evidence": [],
+            }
         ]
         scored = [
             {
@@ -351,7 +351,6 @@ class TestStrategist:
             }
         ]
         # First call returns contrarian, second call returns scored
-        call_count = 0
         responses = [json.dumps(contrarian), json.dumps(scored)]
 
         class MultiResponseLLM:
@@ -361,7 +360,13 @@ class TestStrategist:
             async def complete(self, request: CompletionRequest) -> CompletionResponse:
                 content = responses[self.idx]
                 self.idx += 1
-                return CompletionResponse(content=content, model="fake", input_tokens=0, output_tokens=0, cost=0.0)
+                return CompletionResponse(
+                    content=content,
+                    model="fake",
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost=0.0,
+                )
 
         llm = LLMRegistry()
         llm.register("fake", MultiResponseLLM(), [Role.STRATEGIST])

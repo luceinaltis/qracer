@@ -139,8 +139,7 @@ class Analyst(BaseAgent):
                             data={
                                 "ticker": ticker,
                                 "articles": [
-                                    {"title": a.title, "sentiment": a.sentiment}
-                                    for a in articles
+                                    {"title": a.title, "sentiment": a.sentiment} for a in articles
                                 ],
                             },
                             source="NewsProvider",

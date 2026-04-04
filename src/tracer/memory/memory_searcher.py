@@ -135,9 +135,7 @@ class MemorySearcher:
 
     def remove(self, session_id: str) -> None:
         """Remove a session from the index."""
-        self._conn.execute(
-            "DELETE FROM session_index WHERE session_id = ?", [session_id]
-        )
+        self._conn.execute("DELETE FROM session_index WHERE session_id = ?", [session_id])
         self._fts_dirty = True
 
     def close(self) -> None:
