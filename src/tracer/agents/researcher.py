@@ -145,7 +145,7 @@ class Researcher(BaseAgent):
                     source="NewsProvider",
                 )
             )
-        except (KeyError, Exception):
+        except KeyError:
             results.append(
                 ToolResult(
                     tool="news",
@@ -172,7 +172,7 @@ class Researcher(BaseAgent):
                     source="FundamentalProvider",
                 )
             )
-        except (KeyError, Exception):
+        except KeyError:
             results.append(
                 ToolResult(
                     tool="fundamentals",
