@@ -1,4 +1,13 @@
-from tracer.models.base import Region, Report, Sector, Signal, SignalDirection, Stock, ToolResult
+from tracer.models.base import (
+    Region,
+    Report,
+    Sector,
+    Signal,
+    SignalDirection,
+    Stock,
+    ToolResult,
+    TradeThesis,
+)
 
 __all__ = [
     "Region",
@@ -8,4 +17,5 @@ __all__ = [
     "SignalDirection",
     "Stock",
     "ToolResult",
+    "TradeThesis",
 ]

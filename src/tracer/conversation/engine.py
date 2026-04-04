@@ -16,7 +16,7 @@ from tracer.conversation.intent import Intent, IntentParser
 from tracer.data.registry import DataRegistry, build_registry
 from tracer.llm.providers import CompletionRequest, CompletionResponse, Message, Role
 from tracer.llm.registry import LLMRegistry
-from tracer.models import ToolResult
+from tracer.models import ToolResult, TradeThesis
 from tracer.tools import pipeline
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,7 @@ class AnalysisResult:
     confidence: float = 0.0
     iterations: int = 0
     early_exit_reason: str | None = None
+    trade_thesis: TradeThesis | None = None
 
 
 @dataclass
@@ -312,6 +313,7 @@ class ConversationEngine:
     ) -> None:
         if data_registry is None:
             data_registry = build_registry()
+        self._llm = llm_registry
         self._intent_parser = IntentParser(llm_registry)
         self._analysis_loop = AnalysisLoop(
             llm_registry,
@@ -352,7 +354,30 @@ class ConversationEngine:
             analysis.iterations,
         )
 
-        # 4. Synthesize response.
+        # 4. Trade thesis generation (step 7) — only when tickers are present.
+        if intent.tickers:
+            thesis_result = await pipeline.trade_thesis(
+                intent.tickers[0], analysis.results, self._llm
+            )
+            analysis.results.append(thesis_result)
+            if thesis_result.success and thesis_result.data.get("thesis"):
+                td = thesis_result.data["thesis"]
+                try:
+                    analysis.trade_thesis = TradeThesis(
+                        ticker=td["ticker"],
+                        entry_zone=tuple(td["entry_zone"]),  # type: ignore[arg-type]
+                        target_price=td["target_price"],
+                        stop_loss=td["stop_loss"],
+                        risk_reward_ratio=td["risk_reward_ratio"],
+                        catalyst=td["catalyst"],
+                        catalyst_date=td.get("catalyst_date"),
+                        conviction=td["conviction"],
+                        summary=td["summary"],
+                    )
+                except (KeyError, ValueError, TypeError):
+                    logger.warning("Failed to reconstruct TradeThesis from result")
+
+        # 5. Synthesize response.
         text = await self._synthesizer.synthesize(intent, analysis)
 
         self._history.append({"role": "assistant", "content": text})
