@@ -391,11 +391,54 @@ Agent: [Portfolio 리스크 분석 제공]
 
 ---
 
-## 7. 온볼딩
+## 7. 설치 (qracer install)
 
-### 첫 대화
+### 요구사항
+
+- Python 3.10+
+- pip 또는 uv
+
+### 설치 명령
+
+```bash
+# pip로 설치
+pip install qracer
+
+# uv로 설치 (권장, 더 빠름)
+uv add qracer
+```
+
+### 첫 실행 (qracer install)
+
+설치 후 `qracer install`로 초기 설정:
 
 ```
+$ qracer install
+
+🎯 qracer 설치를 시작합니다.
+
+1. 설정 디렉토리 생성
+   ~/.qracer/ 디렉토리를 생성합니다... [OK]
+
+2. 데이터 소스 설정
+   Finnhub API 키를 입력하세요 (선택): 
+   FRED API 키를 입력하세요 (선택):
+
+3. Telegram 알림 설정 (선택)
+   Bot Token: 
+   Chat ID:
+
+4. 포트폴리오 초기 설정
+   기본 통화 (USD/KRW): USD
+
+✅ 설치 완료! 'qracer --help'로 명령어를 확인하세요.
+```
+
+### 설치 후 첫 실행
+
+```bash
+$ qracer
+
 🎯 qracer에 오신 것을 환영합니다!
 
 저는 luce, 당신의 트레이딩 리서치 파트너예요.
