@@ -22,28 +22,28 @@ Users speak naturally, Agent understands and acts.
 ### Input Patterns
 
 **Ticker Mention**
-```
+```text
 "How's AAPL?"
 "Show me Apple stock"
 "Compare TSLA and NVDA"
 ```
 
 **Sector/Theme Mention**
-```
+```text
 "Analyze semiconductor sector"
 "What AI stocks are there?"
 "Tell me about EV battery theme"
 ```
 
 **Portfolio Related**
-```
+```text
 "Check my portfolio risk"
 "How's my portfolio doing?"
 "Risk check my new position"
 ```
 
 **Complex Questions**
-```
+```text
 "Any semiconductor stocks with PE under 20 worth buying?"
 "What correlates highly with my portfolio?"
 "Which stocks report earnings next week?"
@@ -52,19 +52,19 @@ Users speak naturally, Agent understands and acts.
 ### Agent Response Patterns
 
 **When Clarification Needed**
-```
+```text
 User: "Recommend stocks to buy"
 Agent: "Which sector or theme? Or search the whole market?"
 ```
 
 **When Additional Info Needed**
-```
+```text
 User: "How's this stock?"
 Agent: "Which stock? Recently mentioned: AAPL, TSLA, NVDA?"
 ```
 
 **When Ambiguous**
-```
+```text
 User: "Looks good"
 Agent: "AAPL, right? Analysis from buy perspective?"
 ```
@@ -76,7 +76,7 @@ Agent: "AAPL, right? Analysis from buy perspective?"
 ### 3.1 Technical Implementation
 
 **Memory Structure**
-```
+```text
 Session Memory (Redis/SQLite)
 ├── session_id: uuid
 ├── user_id: telegram_id
@@ -120,7 +120,7 @@ Session Memory (Redis/SQLite)
 ### 3.2 User Experience Flow
 
 **Normal Flow Example**
-```
+```text
 User:  "Analyze AAPL"
 Agent: [Provides AAPL deep analysis]
        Current: AAPL | Depth: deep
@@ -139,7 +139,7 @@ Agent: [Provides TSLA deep analysis]
 ```
 
 **Context Switch Example**
-```
+```text
 User:  "Analyze AAPL"
 Agent: [Analysis] Current: AAPL
 
@@ -153,7 +153,7 @@ Agent: [AAPL real-time summary] Depth: quick
 ### 3.3 Complex Scenario Handling
 
 **Multiple Topics Mixed**
-```
+```text
 User: "Which is better, AAPL or TSLA?"
 → Stack: [AAPL, TSLA] (equal priority)
 → Comparison mode activated
@@ -164,7 +164,7 @@ User: "But NVDA also looks good"
 ```
 
 **Ambiguous Pronouns**
-```
+```text
 User: "Analyze AAPL"
 Agent: [Provides analysis]
 
@@ -180,7 +180,7 @@ User: "This looks risky"
 ```
 
 **Conflict Resolution**
-```
+```text
 User: "Any good semiconductor stocks?"
 Agent: [Semiconductor sector analysis] Current: semiconductors
 
@@ -192,7 +192,7 @@ User: "What about AAPL?"  # sector → ticker switch
 ### 3.4 Agent Decision Logic
 
 **Context Retention Decision Tree**
-```
+```text
 New message arrives
 ├── Ticker/sector mentioned?
 │   ├── Yes → Switch to that topic
@@ -226,7 +226,7 @@ New message arrives
 ### 3.5 Unknown Topic Handling
 
 **Search Priority**
-```
+```text
 Unknown topic "XYZ" appears
   ↓
 1. Local Context (instant, <100ms)
@@ -246,7 +246,7 @@ Unknown topic "XYZ" appears
 ```
 
 **Handling Example**
-```
+```text
 User: "What's QuantumScape?"
   ↓
 [Local/embedding search] None
@@ -283,7 +283,7 @@ qracer main interface. Left sidebar menu + right info panel structure.
 
 ### Layout
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │  qracer                                                 │
 ├──────────┬──────────────────────────────────────────────┤
@@ -333,7 +333,7 @@ qracer main interface. Left sidebar menu + right info panel structure.
 ### Main Panel Components
 
 **Overview Example**
-```
+```text
 ┌────────────────────────────────────────┐
 │  Portfolio Summary                     │
 │  AAPL  $175.20  +1.2%   $12,450        │
@@ -354,7 +354,7 @@ qracer main interface. Left sidebar menu + right info panel structure.
 ### Interaction Patterns
 
 **Dashboard → Chat Transition**
-```
+```text
 1. Click AAPL in Overview
 2. Auto opens New Chat
 3. Agent: "Tell you about AAPL?"
@@ -362,7 +362,7 @@ qracer main interface. Left sidebar menu + right info panel structure.
 ```
 
 **Chat Referencing Dashboard**
-```
+```text
 User: "Check my portfolio risk"
 Agent: [Provides portfolio risk analysis]
       "You can also check real-time risk gauge in Overview tab."
@@ -411,7 +411,7 @@ uv add qracer
 
 After install, run `qracer install` for initial setup:
 
-```
+```text
 $ qracer install
 
 🎯 Starting qracer installation.

@@ -4,7 +4,7 @@ The tracer workspace is a single directory containing all project files.
 
 ## Structure
 
-```
+```text
 tracer/
 ├── src/tracer/       # Source code
 ├── tests/            # Test suite

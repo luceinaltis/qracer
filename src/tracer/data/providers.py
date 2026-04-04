@@ -76,9 +76,7 @@ class PriceProvider(Protocol):
 
     async def get_price(self, ticker: str) -> float: ...
 
-    async def get_ohlcv(
-        self, ticker: str, start: date, end: date
-    ) -> list[OHLCV]: ...
+    async def get_ohlcv(self, ticker: str, start: date, end: date) -> list[OHLCV]: ...
 
 
 @runtime_checkable
@@ -106,6 +104,4 @@ class NewsProvider(Protocol):
 class AlternativeProvider(Protocol):
     """Capability: Alternative data retrieval (insider trades, etc.)."""
 
-    async def get_alternative(
-        self, ticker: str, record_type: str
-    ) -> list[AlternativeRecord]: ...
+    async def get_alternative(self, ticker: str, record_type: str) -> list[AlternativeRecord]: ...

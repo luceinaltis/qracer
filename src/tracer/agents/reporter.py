@@ -100,9 +100,7 @@ class Reporter(BaseAgent):
             conviction=primary.conviction,
             what_happened=report_data.get("what_happened", primary.thesis),
             evidence_chain=report_data.get("evidence_chain", primary.evidence),
-            adversarial_check=report_data.get(
-                "adversarial_check", primary.risk_factors
-            ),
+            adversarial_check=report_data.get("adversarial_check", primary.risk_factors),
             verdict=report_data.get("verdict", primary.thesis),
             signals=signals,
         )

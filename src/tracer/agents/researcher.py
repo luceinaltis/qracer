@@ -9,7 +9,6 @@ from tracer.agents.base import BaseAgent
 from tracer.data.providers import (
     FundamentalProvider,
     NewsProvider,
-    PriceProvider,
 )
 from tracer.llm.providers import Role
 from tracer.models import Stock, ToolResult
@@ -79,11 +78,7 @@ class Researcher(BaseAgent):
         # Apply hard market-cap filter before LLM call
         filtered = successful
         if min_market_cap is not None:
-            filtered = [
-                r
-                for r in successful
-                if (r.data.get("market_cap") or 0) >= min_market_cap
-            ]
+            filtered = [r for r in successful if (r.data.get("market_cap") or 0) >= min_market_cap]
 
         if not filtered:
             return []
@@ -110,9 +105,7 @@ class Researcher(BaseAgent):
         except (json.JSONDecodeError, ValueError):
             selected = [r.data["ticker"] for r in filtered if "ticker" in r.data]
 
-        return [
-            Stock(ticker=t, name=t) for t in selected if isinstance(t, str)
-        ]
+        return [Stock(ticker=t, name=t) for t in selected if isinstance(t, str)]
 
     async def map_consensus(self, ticker: str) -> dict:
         """Build a consensus view for a ticker using news and alternative data.

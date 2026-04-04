@@ -23,8 +23,7 @@ class TestTracerDB:
         with TracerDB() as db:
             db._init_schema()  # noqa: SLF001
             tables = db.connection.execute(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = 'main'"
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'"
             ).fetchall()
             assert len([t for t in tables if t[0] == "prices"]) == 1
 

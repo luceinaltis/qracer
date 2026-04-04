@@ -60,9 +60,7 @@ class DataRegistry:
             for adapter_name, adapter in adapters:
                 if adapter_name == name:
                     return adapter
-            raise KeyError(
-                f"No adapter named '{name}' for capability {capability.__name__}"
-            )
+            raise KeyError(f"No adapter named '{name}' for capability {capability.__name__}")
 
         # Return the first (highest priority) adapter
         return adapters[0][1]

@@ -36,11 +36,13 @@ def _mock_llm_registry(responses: dict[Role, str | list[str]]) -> LLMRegistry:
         provider = AsyncMock()
         if isinstance(content, list):
             contents = list(content)
+
             async def _complete(req, _contents=contents):
                 c = _contents.pop(0) if _contents else "{}"
                 return CompletionResponse(
                     content=c, model="mock", input_tokens=10, output_tokens=5, cost=0.0
                 )
+
             provider.complete = _complete
         else:
             provider.complete.return_value = CompletionResponse(
@@ -149,9 +151,11 @@ class TestInvokeTool:
 class TestAnalysisLoop:
     async def test_exits_on_high_confidence(self) -> None:
         """Loop should exit after first evaluation if confidence is high."""
-        llm = _mock_llm_registry({
-            Role.ANALYST: json.dumps({"confidence": 0.9, "missing_tools": []}),
-        })
+        llm = _mock_llm_registry(
+            {
+                Role.ANALYST: json.dumps({"confidence": 0.9, "missing_tools": []}),
+            }
+        )
         loop = AnalysisLoop(llm, DataRegistry())
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
 
@@ -196,15 +200,15 @@ class TestAnalysisLoop:
 
     async def test_early_exit_on_multiple_failures(self) -> None:
         """Loop should exit early if >=2 tools fail in first iteration."""
-        llm = _mock_llm_registry({
-            Role.ANALYST: json.dumps({"confidence": 0.5, "missing_tools": []}),
-        })
+        llm = _mock_llm_registry(
+            {
+                Role.ANALYST: json.dumps({"confidence": 0.5, "missing_tools": []}),
+            }
+        )
         loop = AnalysisLoop(llm, DataRegistry())
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
 
-        result = await loop.run(
-            intent, [_failed_result("price_event"), _failed_result("news")]
-        )
+        result = await loop.run(intent, [_failed_result("price_event"), _failed_result("news")])
         assert result.early_exit_reason is not None
         assert "2 tools failed" in result.early_exit_reason
 
@@ -223,9 +227,11 @@ class TestAnalysisLoop:
 
     async def test_no_missing_tools_exits(self) -> None:
         """If analyst says no missing tools but confidence is low, exit."""
-        llm = _mock_llm_registry({
-            Role.ANALYST: json.dumps({"confidence": 0.5, "missing_tools": []}),
-        })
+        llm = _mock_llm_registry(
+            {
+                Role.ANALYST: json.dumps({"confidence": 0.5, "missing_tools": []}),
+            }
+        )
         loop = AnalysisLoop(llm, DataRegistry())
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
 
@@ -240,14 +246,14 @@ class TestAnalysisLoop:
 
 class TestResponseSynthesizer:
     async def test_synthesize_calls_strategist(self) -> None:
-        llm = _mock_llm_registry({
-            Role.STRATEGIST: "[ANALYSIS: AAPL]\nConviction: 8/10\n...",
-        })
+        llm = _mock_llm_registry(
+            {
+                Role.STRATEGIST: "[ANALYSIS: AAPL]\nConviction: 8/10\n...",
+            }
+        )
         synth = ResponseSynthesizer(llm)
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
-        analysis = AnalysisResult(
-            results=[_ok_result("price_event")], confidence=0.8, iterations=1
-        )
+        analysis = AnalysisResult(results=[_ok_result("price_event")], confidence=0.8, iterations=1)
 
         text = await synth.synthesize(intent, analysis)
         assert "ANALYSIS" in text
@@ -272,9 +278,11 @@ class TestResponseSynthesizer:
         assert "LLM error" in text
 
     async def test_includes_failed_tools_in_caveats(self) -> None:
-        llm = _mock_llm_registry({
-            Role.STRATEGIST: "[ANALYSIS] with insider caveat",
-        })
+        llm = _mock_llm_registry(
+            {
+                Role.STRATEGIST: "[ANALYSIS] with insider caveat",
+            }
+        )
         synth = ResponseSynthesizer(llm)
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
         analysis = AnalysisResult(
@@ -300,11 +308,13 @@ class TestConversationEngine:
         analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
         synth_resp = "[ANALYSIS: AAPL — 2025-01-01]\nConviction: 8/10\nTest response"
 
-        llm = _mock_llm_registry({
-            Role.RESEARCHER: intent_resp,
-            Role.ANALYST: analysis_resp,
-            Role.STRATEGIST: synth_resp,
-        })
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: intent_resp,
+                Role.ANALYST: analysis_resp,
+                Role.STRATEGIST: synth_resp,
+            }
+        )
         data = DataRegistry()
 
         engine = ConversationEngine(llm, data)
@@ -324,11 +334,13 @@ class TestConversationEngine:
         intent_resp = json.dumps({"intent": "macro_query", "tickers": []})
         analysis_resp = json.dumps({"confidence": 0.9, "missing_tools": []})
 
-        llm = _mock_llm_registry({
-            Role.RESEARCHER: intent_resp,
-            Role.ANALYST: analysis_resp,
-            Role.STRATEGIST: "Macro analysis response",
-        })
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: intent_resp,
+                Role.ANALYST: analysis_resp,
+                Role.STRATEGIST: "Macro analysis response",
+            }
+        )
 
         engine = ConversationEngine(llm, DataRegistry())
 
@@ -343,11 +355,13 @@ class TestConversationEngine:
     async def test_custom_thresholds(self) -> None:
         """Engine should accept custom max_iterations and confidence_threshold."""
         engine = ConversationEngine(
-            _mock_llm_registry({
-                Role.RESEARCHER: json.dumps({"intent": "macro_query", "tickers": []}),
-                Role.ANALYST: json.dumps({"confidence": 0.5, "missing_tools": []}),
-                Role.STRATEGIST: "response",
-            }),
+            _mock_llm_registry(
+                {
+                    Role.RESEARCHER: json.dumps({"intent": "macro_query", "tickers": []}),
+                    Role.ANALYST: json.dumps({"confidence": 0.5, "missing_tools": []}),
+                    Role.STRATEGIST: "response",
+                }
+            ),
             DataRegistry(),
             max_iterations=1,
             confidence_threshold=0.9,

@@ -46,8 +46,12 @@ class TestPriceEvent:
         mock.get_price.return_value = 185.0
         mock.get_ohlcv.return_value = [
             OHLCV(
-                date=date(2024, 1, 1), open=180.0, high=186.0,
-                low=179.0, close=185.0, volume=1000,
+                date=date(2024, 1, 1),
+                open=180.0,
+                high=186.0,
+                low=179.0,
+                close=185.0,
+                volume=1000,
             ),
         ]
         result = await price_event("AAPL", _registry_with(PriceProvider, mock))

@@ -55,9 +55,7 @@ class ClaudeAdapter:
         model_map: dict[Role, str] | None = None,
     ) -> None:
         if not _HAS_ANTHROPIC:
-            raise ImportError(
-                "anthropic is not installed. Install it with: uv add anthropic"
-            )
+            raise ImportError("anthropic is not installed. Install it with: uv add anthropic")
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._model_map = model_map or dict(DEFAULT_MODEL_MAP)
 

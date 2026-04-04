@@ -121,9 +121,7 @@ class Strategist(BaseAgent):
         signals.sort(key=lambda sig: sig.conviction, reverse=True)
         return signals
 
-    async def run(
-        self, cross_market: dict, consensus: dict, **kwargs
-    ) -> list[Signal]:
+    async def run(self, cross_market: dict, consensus: dict, **kwargs) -> list[Signal]:
         """Default entry point — detect contrarian signals and score them."""
         contrarian = await self.detect_contrarian(cross_market, consensus)
         return await self.score_signals(contrarian)

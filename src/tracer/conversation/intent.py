@@ -57,9 +57,7 @@ class Intent:
     def __post_init__(self) -> None:
         # If no explicit tools, fill from the default map.
         if not self.tools:
-            object.__setattr__(
-                self, "tools", list(INTENT_TOOL_MAP.get(self.intent_type, []))
-            )
+            object.__setattr__(self, "tools", list(INTENT_TOOL_MAP.get(self.intent_type, [])))
 
 
 _SYSTEM_PROMPT = """\

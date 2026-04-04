@@ -20,9 +20,7 @@ class PriceRepository:
         """Insert or replace OHLCV bars. Returns number of rows affected."""
         if not bars:
             return 0
-        data = [
-            (ticker, b.date, b.open, b.high, b.low, b.close, b.volume) for b in bars
-        ]
+        data = [(ticker, b.date, b.open, b.high, b.low, b.close, b.volume) for b in bars]
         self._conn.executemany(
             """
             INSERT OR REPLACE INTO prices (ticker, date, open, high, low, close, volume)
@@ -44,8 +42,7 @@ class PriceRepository:
             [ticker, start, end],
         ).fetchall()
         return [
-            OHLCV(date=r[0], open=r[1], high=r[2], low=r[3], close=r[4], volume=r[5])
-            for r in rows
+            OHLCV(date=r[0], open=r[1], high=r[2], low=r[3], close=r[4], volume=r[5]) for r in rows
         ]
 
     def latest_date(self, ticker: str) -> date | None:
