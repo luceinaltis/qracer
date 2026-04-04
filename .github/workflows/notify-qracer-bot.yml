@@ -1,0 +1,16 @@
+name: Wake qracer-bot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake OpenClaw
+        run: |
+          curl -s -X POST "${{ secrets.OPENCLAW_HOOK_URL }}/hooks/wake" \
+            -H "Authorization: Bearer ${{ secrets.OPENCLAW_HOOK_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\": \"PR #${{ github.event.pull_request.number }} ${{ github.event.action }}: ${{ github.event.pull_request.title }} — ${{ github.event.pull_request.html_url }}\", \"mode\": \"now\"}"
