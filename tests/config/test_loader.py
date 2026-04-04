@@ -170,7 +170,13 @@ class TestLoadConfig:
         (user_qracer / "providers.toml").write_text(
             "[providers.yfinance]\nenabled = true\npriority = 100\ntier = \"hot\"\n"
         )
-        (user_qracer / "portfolio.toml").write_text('currency = "KRW"\n')
+        (user_qracer / "portfolio.toml").write_text(
+            'currency = "KRW"\n\n'
+            "[[holdings]]\n"
+            'ticker = "AAPL"\n'
+            "shares = 10.0\n"
+            "avg_cost = 150.50\n"
+        )
         (user_qracer / "credentials.env").write_text("MY_KEY=secret\n")
 
         # Project-level override
@@ -190,5 +196,9 @@ class TestLoadConfig:
         assert "yfinance" in cfg.providers.providers
         # Portfolio from user
         assert cfg.portfolio.currency == "KRW"
+        assert len(cfg.portfolio.holdings) == 1
+        assert cfg.portfolio.holdings[0].ticker == "AAPL"
+        assert cfg.portfolio.holdings[0].shares == 10.0
+        assert cfg.portfolio.holdings[0].avg_cost == 150.50
         # Credentials from user dir
         assert cfg.credentials == {"MY_KEY": "secret"}

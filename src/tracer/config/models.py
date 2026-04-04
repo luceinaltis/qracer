@@ -35,7 +35,8 @@ class Holding(BaseModel):
     """A single portfolio holding."""
 
     ticker: str
-    weight: float
+    shares: float
+    avg_cost: float
 
 
 class PortfolioLimits(BaseModel):

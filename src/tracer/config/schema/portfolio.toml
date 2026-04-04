@@ -10,4 +10,5 @@ max_drawdown_alert_pct = 10.0
 
 # [[holdings]]
 # ticker = "AAPL"
-# weight = 10.0
+# shares = 100.0
+# avg_cost = 165.00

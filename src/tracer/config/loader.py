@@ -14,8 +14,16 @@ from __future__ import annotations
 
 import logging
 import os
-import tomllib
+import sys
 from pathlib import Path
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    try:
+        import tomllib  # type: ignore[no-redef]
+    except ImportError:
+        import tomli as tomllib  # type: ignore[no-redef]
 from typing import Any
 
 from dotenv import dotenv_values
