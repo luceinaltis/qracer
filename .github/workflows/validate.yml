@@ -4,7 +4,8 @@ on:
   pull_request:
 
 jobs:
-  lint:
+  code-quality:
+    name: Code Quality (ruff + pyright)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,10 +26,11 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
-      - name: Pyright
+      - name: Pyright type check
         run: uv run pyright
 
-  test:
+  test-suite:
+    name: Test Suite (pytest + coverage)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +55,8 @@ jobs:
           name: coverage-report
           path: .coverage
 
-  validate-docs:
+  docs-validation:
+    name: Docs Validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,11 +1,11 @@
-name: Wake qracer-bot
+name: Notify Reviewer
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
-  wake:
+  notify-reviewer:
     runs-on: ubuntu-latest
     steps:
       - name: Connect to Tailscale
