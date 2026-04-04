@@ -6,8 +6,8 @@ from tracer.config.models import (
     Holding,
     PortfolioConfig,
     PortfolioLimits,
-    ProvidersConfig,
     ProviderConfig,
+    ProvidersConfig,
     QracerConfig,
 )
 
