@@ -20,6 +20,7 @@ Before implementing any feature or making architectural changes, read the releva
 | `docs/architecture.md` | Any new feature or structural change |
 | `docs/pipeline.md` | Data flow or pipeline modifications |
 | `docs/conversational-layer.md` | Conversation handling changes |
+| `docs/risk-system.md` | Risk management, position sizing, portfolio limits |
 | `docs/memory-system.md` | Memory or state management changes |
 | `docs/workspace.md` | Workspace configuration changes |
 
