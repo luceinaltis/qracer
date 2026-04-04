@@ -125,7 +125,7 @@ class TestInvokeTool:
         registry = DataRegistry()
         result = await _invoke_tool("price_event", intent, registry)
         assert not result.success
-        assert "no tickers" in result.error
+        assert result.error is not None and "no tickers" in result.error
 
     async def test_invoke_tools_concurrent(self) -> None:
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")

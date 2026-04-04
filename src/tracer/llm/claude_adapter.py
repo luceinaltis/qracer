@@ -16,7 +16,7 @@ from tracer.llm.providers import (
 )
 
 try:
-    import anthropic
+    import anthropic  # pyright: ignore[reportMissingImports]
 
     _HAS_ANTHROPIC = True
 except ImportError:
