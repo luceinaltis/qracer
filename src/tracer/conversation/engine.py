@@ -13,10 +13,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from tracer.config.models import PortfolioConfig
+from tracer.conversation.context import ConversationContext, extract_context, resolve_pronoun
 from tracer.conversation.intent import Intent, IntentParser
 from tracer.data.registry import DataRegistry, build_registry
 from tracer.llm.providers import CompletionRequest, CompletionResponse, Message, Role
 from tracer.llm.registry import LLMRegistry
+from tracer.memory.session_logger import SessionLogger
 from tracer.models import ToolResult, TradeThesis
 from tracer.tools import pipeline
 
@@ -312,6 +314,7 @@ class ConversationEngine:
         *,
         max_iterations: int = MAX_ITERATIONS,
         confidence_threshold: float = CONFIDENCE_THRESHOLD,
+        session_logger: SessionLogger | None = None,
     ) -> None:
         if data_registry is None:
             data_registry = build_registry()
@@ -327,6 +330,8 @@ class ConversationEngine:
         self._data = data_registry
         self._portfolio_config = portfolio_config or PortfolioConfig()
         self._history: list[dict] = []
+        self._session_logger = session_logger
+        self._context: ConversationContext = ConversationContext()
 
     @property
     def history(self) -> list[dict]:
@@ -337,8 +342,25 @@ class ConversationEngine:
         """Process a user query through the full pipeline."""
         self._history.append({"role": "user", "content": user_input})
 
+        # 0. Extract conversation context from session log.
+        if self._session_logger is not None:
+            turns = self._session_logger.read_all()[-50:]
+            self._context = extract_context(turns)
+
         # 1. Parse intent.
         intent = await self._intent_parser.parse(user_input)
+
+        # 1b. If no tickers in intent, try resolving from conversation context.
+        if not intent.tickers and self._context.current_topic:
+            resolved = resolve_pronoun(user_input.strip(), self._context)
+            if resolved is None:
+                resolved = self._context.current_topic
+            intent = Intent(
+                intent_type=intent.intent_type,
+                tickers=[resolved],
+                tools=intent.tools,
+                raw_query=intent.raw_query,
+            )
         logger.info(
             "Parsed intent: %s tickers=%s tools=%s",
             intent.intent_type.value,
