@@ -6,9 +6,7 @@ Per-role assignment is overridable via config.
 
 from __future__ import annotations
 
-from typing import Any
-
-from tracer.llm.providers import Role
+from tracer.llm.providers import LLMProvider, Role
 
 
 class LLMRegistry:
@@ -16,9 +14,9 @@ class LLMRegistry:
 
     def __init__(self) -> None:
         # role -> list of (name, provider) in priority order
-        self._providers: dict[Role, list[tuple[str, Any]]] = {}
+        self._providers: dict[Role, list[tuple[str, LLMProvider]]] = {}
 
-    def register(self, name: str, provider: Any, roles: list[Role]) -> None:
+    def register(self, name: str, provider: LLMProvider, roles: list[Role]) -> None:
         """Register a provider for the given roles.
 
         Providers registered first for a given role have higher priority.
@@ -28,7 +26,7 @@ class LLMRegistry:
                 self._providers[role] = []
             self._providers[role].append((name, provider))
 
-    def get(self, role: Role, name: str | None = None) -> Any:
+    def get(self, role: Role, name: str | None = None) -> LLMProvider:
         """Get a provider by role, optionally by explicit name.
 
         Args:
@@ -53,7 +51,7 @@ class LLMRegistry:
 
         return providers[0][1]
 
-    def get_all(self, role: Role) -> list[tuple[str, Any]]:
+    def get_all(self, role: Role) -> list[tuple[str, LLMProvider]]:
         """Get all providers for a role in priority order."""
         return list(self._providers.get(role, []))
 

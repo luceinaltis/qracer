@@ -65,7 +65,7 @@ class AlternativeRecord:
 
     record_type: str
     ticker: str
-    data: dict
+    data: dict[str, object]
     source: str
     date: date
 

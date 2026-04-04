@@ -110,7 +110,7 @@ class ToolResult:
 
     tool: str
     success: bool
-    data: dict
+    data: dict[str, object]
     source: str
     fetched_at: datetime = field(default_factory=datetime.now)
     is_stale: bool = False
