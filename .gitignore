@@ -39,8 +39,10 @@ htmlcov/
 *.db-shm
 *.db-wal
 
-# Session memory
+# Session memory (runtime data, not source code)
 memory/
+!src/tracer/memory/
+!tests/memory/
 
 # IDE
 .vscode/
