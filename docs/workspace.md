@@ -1,37 +1,35 @@
 # Workspace
 
-Agent configuration lives at `~/.tracer/`, loaded at session start.
+The tracer workspace is a single directory containing all project files.
 
-```text
-~/.tracer/
-├── IDENTITY.md      # Agent role and identity
-├── SOUL.md          # Tone: cold, data-first, adversarial self-check
-├── USER.md          # User preferences, risk tolerance, watchlist, cost budget
-├── TOOLS.md         # Available providers, API key status, embedding model config
-├── BOOTSTRAP.md     # Session init: load market context, watchlist, MEMORY.md
-├── HEARTBEAT.md     # Session-start checks: watchlist re-evaluation, data freshness
-├── MEMORY.md        # Cross-session long-term memory
-└── memory/
-    └── YYYY/MM/DD/
-        ├── session-{id}.jsonl   ← Tier 1
-        └── session-{id}.md      ← Tier 2
+## Structure
+
+```
+tracer/
+├── src/tracer/       # Source code
+├── tests/            # Test suite
+├── docs/             # Design documentation
+├── skills/           # Agent skill definitions
+└── scripts/          # CI validation scripts
 ```
 
-## HEARTBEAT Execution Model
+## Development Setup
 
-HEARTBEAT tasks run at session start (not as a background daemon). When the CLI REPL starts, it reads `HEARTBEAT.md` and executes any pending checks before handing control to the user.
-
-`HEARTBEAT.md` defines tasks as structured entries:
-
-```markdown
-## Watchlist Signal Check
-- frequency: daily
-- last_run: 2026-03-19
-- action: re-evaluate conviction scores for all tickers in USER.md watchlist
-
-## Data Freshness Check
-- frequency: session_start
-- action: verify Finnhub and FRED data is within acceptable staleness threshold
+```bash
+uv sync              # Install dependencies
+uv run pytest        # Run tests
+uv run ruff check .  # Lint
+uv run pyright       # Type check
 ```
 
-Results are summarized as a brief status message at the start of each session. Results are appended to the day's JSONL log.
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in your API keys:
+
+```bash
+ANTHROPIC_API_KEY=...
+FINNHUB_API_KEY=...
+FRED_API_KEY=...
+```
+
+Never commit `.env`. It is gitignored.
