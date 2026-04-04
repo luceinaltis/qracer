@@ -1,0 +1,64 @@
+"""Pydantic v2 models for .qracer/ configuration files."""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class AppConfig(BaseModel):
+    """config.toml — global application settings."""
+
+    default_mode: Literal["quick", "deep"] = "quick"
+    llm_provider: str = "claude"
+    llm_model: str = "claude-sonnet-4-20250514"
+    language: str = "en"
+
+
+class ProviderConfig(BaseModel):
+    """Single provider entry inside providers.toml."""
+
+    enabled: bool = True
+    priority: int = 100
+    tier: Literal["hot", "warm", "cold"] = "warm"
+    api_key_env: str | None = None
+
+
+class ProvidersConfig(BaseModel):
+    """providers.toml — mapping of provider name to its config."""
+
+    providers: dict[str, ProviderConfig] = Field(default_factory=dict)
+
+
+class Holding(BaseModel):
+    """A single portfolio holding."""
+
+    ticker: str
+    shares: float
+    avg_cost: float
+
+
+class PortfolioLimits(BaseModel):
+    """Risk limits for the portfolio."""
+
+    max_single_position_pct: float = 15.0
+    max_sector_pct: float = 40.0
+    max_drawdown_alert_pct: float = 10.0
+
+
+class PortfolioConfig(BaseModel):
+    """portfolio.toml — portfolio settings."""
+
+    currency: str = "USD"
+    holdings: list[Holding] = Field(default_factory=list)
+    limits: PortfolioLimits = Field(default_factory=PortfolioLimits)
+
+
+class QracerConfig(BaseModel):
+    """Merged top-level configuration combining all TOML files."""
+
+    app: AppConfig = Field(default_factory=AppConfig)
+    providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
+    portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
+    credentials: dict[str, str] = Field(default_factory=dict)

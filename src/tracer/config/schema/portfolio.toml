@@ -1,0 +1,14 @@
+# .qracer/portfolio.toml — portfolio settings
+# Copy this file to ~/.qracer/portfolio.toml or ./.qracer/portfolio.toml
+
+currency = "USD"
+
+[limits]
+max_single_position_pct = 15.0
+max_sector_pct = 40.0
+max_drawdown_alert_pct = 10.0
+
+# [[holdings]]
+# ticker = "AAPL"
+# shares = 100.0
+# avg_cost = 165.00

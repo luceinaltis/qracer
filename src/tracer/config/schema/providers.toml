@@ -1,0 +1,13 @@
+# .qracer/providers.toml — data provider configuration
+# Copy this file to ~/.qracer/providers.toml or ./.qracer/providers.toml
+
+[providers.yfinance]
+enabled = true
+priority = 100
+tier = "hot"
+
+# [providers.bloomberg]
+# enabled = false
+# priority = 50
+# tier = "warm"
+# api_key_env = "BLOOMBERG_API_KEY"
