@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta
 
+from tracer.config.models import PortfolioConfig
 from tracer.data.providers import (
     AlternativeProvider,
     FundamentalProvider,
@@ -350,6 +351,76 @@ async def trade_thesis(
             success=False,
             data={},
             source="LLM/strategist",
+            error=str(exc),
+        )
+
+
+async def risk_check(
+    ticker: str,
+    thesis: TradeThesis,
+    registry: DataRegistry,
+    config: PortfolioConfig,
+) -> ToolResult:
+    """Run risk check on a proposed trade (step 8).
+
+    Builds a portfolio snapshot from current prices, sizes the proposed
+    position using conviction from the thesis, and checks portfolio limits.
+    """
+    from tracer.data.providers import PriceProvider
+    from tracer.risk.calculator import RiskCalculator
+
+    try:
+        calculator = RiskCalculator(config)
+
+        # Gather current prices for all holdings.
+        price_provider: PriceProvider = registry.get(PriceProvider)
+        prices: dict[str, float] = {}
+        for holding in config.holdings:
+            try:
+                prices[holding.ticker] = await price_provider.get_price(holding.ticker)
+            except Exception as exc:
+                logger.warning("Could not fetch price for %s: %s", holding.ticker, exc)
+
+        snapshot = calculator.build_snapshot(prices)
+        exposure = calculator.build_exposure(snapshot)
+
+        # Size the proposed position.
+        allocation_pct = calculator.size_position(ticker, thesis.conviction, snapshot)
+
+        # Check limits (including the hypothetical new position).
+        breached = calculator.check_limits(snapshot, exposure)
+
+        now = datetime.now()
+        return ToolResult(
+            tool="risk_check",
+            success=True,
+            data={
+                "ticker": ticker,
+                "conviction": thesis.conviction,
+                "allocation_pct": allocation_pct,
+                "portfolio_value": snapshot.total_value,
+                "holdings_count": len(snapshot.holdings),
+                "top_sector": exposure.top_sector,
+                "top_sector_pct": exposure.top_sector_pct,
+                "limits_breached": breached,
+                "sized_recommendation": (
+                    f"Allocate {allocation_pct:.2f}% of portfolio to {ticker}"
+                    if not breached
+                    else f"Allocate {allocation_pct:.2f}% of portfolio to {ticker} "
+                    f"(WARNING: {len(breached)} limit(s) breached)"
+                ),
+            },
+            source="RiskCalculator",
+            fetched_at=now,
+            is_stale=False,
+        )
+    except Exception as exc:
+        logger.warning("risk_check failed for %s: %s", ticker, exc)
+        return ToolResult(
+            tool="risk_check",
+            success=False,
+            data={},
+            source="RiskCalculator",
             error=str(exc),
         )
 

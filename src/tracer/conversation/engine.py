@@ -12,6 +12,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from tracer.config.models import PortfolioConfig
 from tracer.conversation.intent import Intent, IntentParser
 from tracer.data.registry import DataRegistry, build_registry
 from tracer.llm.providers import CompletionRequest, CompletionResponse, Message, Role
@@ -307,6 +308,7 @@ class ConversationEngine:
         self,
         llm_registry: LLMRegistry,
         data_registry: DataRegistry | None = None,
+        portfolio_config: PortfolioConfig | None = None,
         *,
         max_iterations: int = MAX_ITERATIONS,
         confidence_threshold: float = CONFIDENCE_THRESHOLD,
@@ -323,6 +325,7 @@ class ConversationEngine:
         )
         self._synthesizer = ResponseSynthesizer(llm_registry)
         self._data = data_registry
+        self._portfolio_config = portfolio_config or PortfolioConfig()
         self._history: list[dict] = []
 
     @property
@@ -377,7 +380,17 @@ class ConversationEngine:
                 except (KeyError, ValueError, TypeError):
                     logger.warning("Failed to reconstruct TradeThesis from result")
 
-        # 5. Synthesize response.
+        # 5. Risk check (step 8) — only when a trade thesis was produced.
+        if analysis.trade_thesis is not None and self._portfolio_config.holdings:
+            risk_result = await pipeline.risk_check(
+                analysis.trade_thesis.ticker,
+                analysis.trade_thesis,
+                self._data,
+                self._portfolio_config,
+            )
+            analysis.results.append(risk_result)
+
+        # 6. Synthesize response.
         text = await self._synthesizer.synthesize(intent, analysis)
 
         self._history.append({"role": "assistant", "content": text})

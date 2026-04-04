@@ -6,6 +6,7 @@ from tracer.tools.pipeline import (
     memory_search,
     news,
     price_event,
+    risk_check,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "memory_search",
     "news",
     "price_event",
+    "risk_check",
 ]
