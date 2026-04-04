@@ -22,7 +22,7 @@ QuickPath (Live Mode)
   Target: < 5s end-to-end
 
 DeepPath (Research Mode)
-  User query → IntentRouter → ResearchPipeline (7-step) → full report
+  User query → IntentRouter → ResearchPipeline (9-step) → full report
   Target: async, notify on completion
 ```
 
@@ -56,6 +56,90 @@ Adapters used in QuickPath must meet latency requirements:
 
 Registry tags each adapter with its tier. QuickPath only dispatches to hot/warm adapters. If a hot adapter times out, the response includes a staleness caveat rather than blocking.
 
+## Config Directory (`.qracer/`)
+
+User and project settings live in a `.qracer/` directory. Resolution order (first found wins):
+
+1. `--config-dir` CLI flag
+2. `QRACER_CONFIG_DIR` environment variable
+3. `./.qracer/` — project-local, team-shareable via git
+4. `~/.qracer/` — user default
+
+Project-local and user configs merge per file: `./.qracer/providers.toml` defines shared provider list, `~/.qracer/credentials.env` supplies personal API keys. Credentials always stay user-level, never committed.
+
+```text
+.qracer/
+├── config.toml        - global settings (default mode, LLM preferences)
+├── providers.toml     - data source config (enabled, priority, tier, api_key_env)
+├── portfolio.toml     - watchlist, holdings, risk limits
+└── credentials.env    - API keys (user-level only, gitignored)
+```
+
+## Provider Plugin System
+
+Built-in adapters and external plugins share the same `ProviderPlugin` protocol. Lifecycle methods (`initialize`, `health_check`, `shutdown`) require DataRegistry updates — tracked separately from current implementation.
+
+```python
+class ProviderPlugin(Protocol):
+    name: str
+    capabilities: list[Capability]
+    tier: Tier  # hot | warm | cold
+
+    async def initialize(self, config: ProviderConfig) -> None: ...
+    async def health_check(self) -> bool: ...
+    async def shutdown(self) -> None: ...
+```
+
+### Built-in vs Plugin
+
+| Type | Location | Install |
+|------|----------|---------|
+| Built-in | `src/tracer/data/adapters/` | Included in project |
+| Plugin | External package | `uv add qracer-provider-*` |
+
+### Plugin Discovery
+
+External plugins register via Python entry points:
+
+```toml
+# External package pyproject.toml
+[project.entry-points."qracer.providers"]
+bloomberg = "qracer_bloomberg.adapter:BloombergAdapter"
+```
+
+On startup the registry scans entry points, loads `providers.toml` config, checks credentials, and registers enabled providers. This replaces the current hardcoded `_build_registries()` approach — significant implementation work tracked separately.
+
+```text
+App start
+  → entry_points("qracer.providers") scan
+  → providers.toml config load
+  → credentials.env check per provider
+  → Missing API key → skip with warning log
+  → Register enabled providers by priority
+```
+
+### `providers.toml` Example
+
+```toml
+[providers.finnhub]
+type = "builtin"
+enabled = true
+priority = 1
+tier = "hot"
+api_key_env = "FINNHUB_API_KEY"
+
+[providers.bloomberg]
+type = "plugin"
+enabled = true
+priority = 1
+tier = "hot"
+api_key_env = "BBG_API_KEY"
+
+[providers.bloomberg.options]
+terminal_host = "localhost"
+terminal_port = 8194
+```
+
 ## Real-Time Data
 
 For Live Mode, Tracer needs sub-second price data and streaming news:
@@ -69,10 +153,15 @@ For Live Mode, Tracer needs sub-second price data and streaming news:
 | Macro | FRED | REST | World Bank |
 | News/Sentiment | Finnhub | REST | NewsAPI, GDELT |
 | Alternative | Finnhub | REST | SEC EDGAR |
+| Earnings calendar | Finnhub | REST | FMP |
+| Institutional holdings | SEC EDGAR | REST | FMP |
+| Options flow (planned) | Unusual Whales | REST | Tradier (plugin) |
+| Short interest (planned) | FINRA | REST | Ortex (plugin) |
+| ETF flows (planned) | ETF.com | REST | — (plugin) |
 
 WebSocket connections are opened on session start during market hours and closed on session end. REST fallback activates automatically if WebSocket disconnects.
 
-API key missing → adapter auto-skipped. Fallback kicks in transparently.
+API key missing → adapter auto-skipped. Fallback kicks in transparently. Provider availability is controlled entirely by `providers.toml` — no code changes needed to toggle sources.
 
 ## Storage
 

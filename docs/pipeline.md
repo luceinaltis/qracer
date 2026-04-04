@@ -41,11 +41,11 @@ If data fetch exceeds 2s, return partial data with a staleness note.
 
 ## ResearchPipeline (DeepPath)
 
-Full 7-step analysis. Runs async — user is notified on completion.
+Full 9-step analysis. Runs async — user is notified on completion.
 
 ```text
 Screening → Macro Regime → Cross-Market Discovery → Consensus Mapping
-    → Contrarian Detection → Conviction Scoring → Alpha Report
+    → Contrarian Detection → Conviction Scoring → Trade Thesis → Risk Check → Alpha Report
 ```
 
 ### Step 1: Universe Screening
@@ -77,9 +77,31 @@ Screening → Macro Regime → Cross-Market Discovery → Consensus Mapping
 - Output: ranked list with risk assessment
 - Agent: **strategist**
 
-### Step 7: Alpha Report
+### Step 7: Trade Thesis Generation (planned)
+- Convert analysis into structured, actionable output
+- Output fields: entry zone, target price, stop-loss, risk/reward ratio, catalyst + date, conviction (1-10)
+- Conviction score drives position sizing suggestion
+- Agent: **strategist**
+
+### Step 8: Risk Check (planned)
+- Consult risk module (see [risk-system.md](risk-system.md)) before finalizing recommendation
+- Check portfolio exposure: sector concentration, correlation to existing holdings, beta impact
+- Adjust position sizing based on current portfolio state
+- Hard limits enforced from `.qracer/portfolio.toml` (max single position %, max sector %)
+- Agent: **strategist** | Data: portfolio context
+
+### Step 9: Alpha Report
 - Generate full report: thesis, evidence, contrarian angle, risk factors, timeline
+- Include sized recommendation with entry/target/stop and risk/reward ratio
 - Agent: **reporter**
+
+```text
+Pipeline feedback loop:
+
+Data → Analysis → Thesis → Risk Check → Sized Recommendation
+                    ↑                          ↓
+                    └── Portfolio Context ──────┘
+```
 
 ### Trigger Conditions
 
