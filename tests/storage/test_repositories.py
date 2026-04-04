@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date, datetime
 
 import pytest
@@ -13,10 +14,10 @@ from tracer.storage.repositories import PriceRepository, ReportRepository, Signa
 
 
 @pytest.fixture
-def db() -> TracerDB:
+def db() -> Iterator[TracerDB]:
     """In-memory database for each test."""
     _db = TracerDB()
-    yield _db  # type: ignore[misc]
+    yield _db
     _db.close()
 
 
