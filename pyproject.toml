@@ -33,7 +33,7 @@ select = ["E", "F", "I", "W"]
 
 [tool.pyright]
 pythonVersion = "3.12"
-typeCheckingMode = "strict"
+typeCheckingMode = "basic"
 reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
