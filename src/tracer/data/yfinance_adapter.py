@@ -35,15 +35,25 @@ def _fetch_ohlcv(ticker: str, start: date, end: date) -> list[OHLCV]:
     if hist.empty:
         return []
     bars: list[OHLCV] = []
+    from typing import cast
+
+    import pandas as pd
+
     for idx, row in hist.iterrows():
+        ts = cast(pd.Timestamp, idx)
+        o = cast(float, row["Open"])
+        h = cast(float, row["High"])
+        lo = cast(float, row["Low"])
+        c = cast(float, row["Close"])
+        v = cast(int, row["Volume"])
         bars.append(
             OHLCV(
-                date=idx.date(),
-                open=float(row["Open"]),
-                high=float(row["High"]),
-                low=float(row["Low"]),
-                close=float(row["Close"]),
-                volume=int(row["Volume"]),
+                date=ts.date(),
+                open=float(o),
+                high=float(h),
+                low=float(lo),
+                close=float(c),
+                volume=int(v),
             )
         )
     return bars

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -10,9 +11,9 @@ from tracer.memory.memory_searcher import MemorySearcher
 
 
 @pytest.fixture
-def searcher() -> MemorySearcher:
+def searcher() -> Iterator[MemorySearcher]:
     s = MemorySearcher()
-    yield s  # type: ignore[misc]
+    yield s
     s.close()
 
 
@@ -50,7 +51,7 @@ class TestMemorySearcher:
 
         # After removal, the table should be empty
         row = searcher.connection.execute("SELECT count(*) FROM session_index").fetchone()
-        assert row[0] == 0
+        assert row is not None and row[0] == 0
 
     def test_index_directory(self, searcher: MemorySearcher, tmp_path: Path) -> None:
         (tmp_path / "sess_001.md").write_text("# AAPL\nEarnings beat", encoding="utf-8")

@@ -8,18 +8,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from tracer.data.providers import (
-    AlternativeProvider,
-    FundamentalProvider,
-    MacroProvider,
-    NewsProvider,
-    PriceProvider,
-)
-
-# Union of all provider protocols
-ProviderType = type[
-    PriceProvider | FundamentalProvider | MacroProvider | NewsProvider | AlternativeProvider
-]
+# Provider protocol classes are used as capability keys (e.g. PriceProvider, NewsProvider).
+# pyright doesn't support type[Protocol], so we use type[Any] as the capability type.
+ProviderType = type[Any]
 
 
 class DataRegistry:
