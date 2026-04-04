@@ -1,25 +1,16 @@
-name: Notify qracer-bot
+name: Wake qracer-bot
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
-  notify:
+  wake:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Telegram notification
-        env:
-          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_ACTION: ${{ github.event.action }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
+      - name: Wake OpenClaw
         run: |
-          TEXT="🔔 PR #${PR_NUMBER} — ${PR_ACTION}%0A${PR_TITLE}%0ABranch: ${PR_BRANCH}%0ABy: ${PR_AUTHOR}%0A${PR_URL}"
-          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${CHAT_ID}" \
-            -d "text=${TEXT}"
+          curl -s -X POST "${{ secrets.OPENCLAW_HOOK_URL }}/hooks/wake" \
+            -H "Authorization: Bearer ${{ secrets.OPENCLAW_HOOK_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\": \"PR #${{ github.event.pull_request.number }} ${{ github.event.action }}: ${{ github.event.pull_request.title }} — ${{ github.event.pull_request.html_url }}\", \"mode\": \"now\"}"
