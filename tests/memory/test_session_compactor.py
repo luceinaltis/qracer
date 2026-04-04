@@ -91,6 +91,7 @@ class TestSessionCompactor:
 
         provider = mock_registry.get(Role.REPORTER)
         from unittest.mock import MagicMock
+
         assert isinstance(provider, MagicMock)
         call_args = provider.complete.call_args[0][0]
         user_msg = call_args.messages[1].content
