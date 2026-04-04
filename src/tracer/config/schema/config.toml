@@ -1,0 +1,7 @@
+# .qracer/config.toml — global application settings
+# Copy this file to ~/.qracer/config.toml or ./.qracer/config.toml
+
+default_mode = "quick"        # "quick" or "deep"
+llm_provider = "claude"
+llm_model = "claude-sonnet-4-20250514"
+language = "en"
