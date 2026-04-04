@@ -8,9 +8,23 @@ jobs:
   wake:
     runs-on: ubuntu-latest
     steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
       - name: Wake OpenClaw
         run: |
           curl -s -X POST "${{ secrets.OPENCLAW_HOOK_URL }}/hooks/wake" \
             -H "Authorization: Bearer ${{ secrets.OPENCLAW_HOOK_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d "{\"text\": \"PR #${{ github.event.pull_request.number }} ${{ github.event.action }}: ${{ github.event.pull_request.title }} — ${{ github.event.pull_request.html_url }}\", \"mode\": \"now\"}"
+
+      - name: Notify Telegram
+        run: |
+          TEXT="PR #${{ github.event.pull_request.number }} ${{ github.event.action }}%0A${{ github.event.pull_request.title }}%0ABy: ${{ github.event.pull_request.user.login }}%0A${{ github.event.pull_request.html_url }}"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=${TEXT}"
