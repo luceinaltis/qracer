@@ -18,7 +18,9 @@ from tracer.data.providers import (
     PriceProvider,
 )
 from tracer.data.registry import DataRegistry
-from tracer.models import ToolResult
+from tracer.llm.providers import CompletionRequest, Message, Role
+from tracer.llm.registry import LLMRegistry
+from tracer.models import ToolResult, TradeThesis
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +245,111 @@ async def cross_market(tickers: list[str], registry: DataRegistry) -> ToolResult
             success=False,
             data={},
             source="PriceProvider",
+            error=str(exc),
+        )
+
+
+_TRADE_THESIS_SYSTEM = (
+    "You are a senior investment strategist. Given the analysis results for a ticker, "
+    "generate a structured trade thesis.\n\n"
+    "Return ONLY valid JSON with these exact keys:\n"
+    '- "entry_zone": [low, high] (price range for entry)\n'
+    '- "target_price": float\n'
+    '- "stop_loss": float\n'
+    '- "catalyst": string (what drives the move)\n'
+    '- "catalyst_date": string or null (expected timing, e.g. "Q2 2026")\n'
+    '- "conviction": integer 1-10\n'
+    '- "summary": string (one-paragraph thesis)\n\n'
+    "Base entry zone on current price data. Ensure stop_loss < entry_zone[0] < "
+    "entry_zone[1] < target_price for long trades."
+)
+
+
+async def trade_thesis(
+    ticker: str, analysis_results: list[ToolResult], llm_registry: LLMRegistry
+) -> ToolResult:
+    """Generate a structured trade thesis from prior analysis results (step 7)."""
+    import json
+
+    evidence_parts: list[str] = []
+    for r in analysis_results:
+        if r.success:
+            evidence_parts.append(f"[{r.tool}] source={r.source}\n{json.dumps(r.data, indent=2)}")
+
+    evidence = "\n\n".join(evidence_parts) if evidence_parts else "(no data)"
+    user_msg = f"Ticker: {ticker}\n\nAnalysis results:\n{evidence}"
+
+    try:
+        provider = llm_registry.get(Role.STRATEGIST)
+        response = await provider.complete(
+            CompletionRequest(
+                messages=[
+                    Message(role="system", content=_TRADE_THESIS_SYSTEM),
+                    Message(role="user", content=user_msg),
+                ],
+                max_tokens=1024,
+                temperature=0.2,
+            )
+        )
+
+        parsed = json.loads(response.content)
+
+        entry_zone = (float(parsed["entry_zone"][0]), float(parsed["entry_zone"][1]))
+        target_price = float(parsed["target_price"])
+        stop_loss = float(parsed["stop_loss"])
+        entry_mid = (entry_zone[0] + entry_zone[1]) / 2
+        denominator = entry_mid - stop_loss
+        risk_reward_ratio = (target_price - entry_mid) / denominator if denominator > 0 else 0.0
+
+        thesis = TradeThesis(
+            ticker=ticker,
+            entry_zone=entry_zone,
+            target_price=target_price,
+            stop_loss=stop_loss,
+            risk_reward_ratio=round(risk_reward_ratio, 2),
+            catalyst=parsed["catalyst"],
+            catalyst_date=parsed.get("catalyst_date"),
+            conviction=int(parsed["conviction"]),
+            summary=parsed["summary"],
+        )
+
+        now = datetime.now()
+        return ToolResult(
+            tool="trade_thesis",
+            success=True,
+            data={
+                "thesis": {
+                    "ticker": thesis.ticker,
+                    "entry_zone": list(thesis.entry_zone),
+                    "target_price": thesis.target_price,
+                    "stop_loss": thesis.stop_loss,
+                    "risk_reward_ratio": thesis.risk_reward_ratio,
+                    "catalyst": thesis.catalyst,
+                    "catalyst_date": thesis.catalyst_date,
+                    "conviction": thesis.conviction,
+                    "summary": thesis.summary,
+                }
+            },
+            source="LLM/strategist",
+            fetched_at=now,
+            is_stale=False,
+        )
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+        logger.warning("trade_thesis parsing failed for %s: %s", ticker, exc)
+        return ToolResult(
+            tool="trade_thesis",
+            success=False,
+            data={},
+            source="LLM/strategist",
+            error=f"Failed to parse LLM response: {exc}",
+        )
+    except Exception as exc:
+        logger.warning("trade_thesis failed for %s: %s", ticker, exc)
+        return ToolResult(
+            tool="trade_thesis",
+            success=False,
+            data={},
+            source="LLM/strategist",
             error=str(exc),
         )
 
