@@ -58,26 +58,21 @@ class ClaudeAdapter:
             raise ImportError(
                 "anthropic is not installed. Install it with: uv add anthropic"
             )
-        self._client = anthropic.Anthropic(api_key=api_key)
+        self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._model_map = model_map or dict(DEFAULT_MODEL_MAP)
 
     def model_for_role(self, role: Role) -> str:
         """Get the model assigned to a role."""
         return self._model_map.get(role, DEFAULT_MODEL_MAP[Role.RESEARCHER])
 
-    async def complete(
-        self, request: CompletionRequest, role: Role | None = None
-    ) -> CompletionResponse:
+    async def complete(self, request: CompletionRequest) -> CompletionResponse:
         """Send a completion request to Claude.
 
         Args:
             request: The completion request.
-            role: Optional role to determine which model to use.
-                  If request.model is set, it takes precedence.
+                     If request.model is not set, defaults to the RESEARCHER model.
         """
-        model = request.model or (
-            self.model_for_role(role) if role else self.model_for_role(Role.RESEARCHER)
-        )
+        model = request.model or self.model_for_role(Role.RESEARCHER)
 
         # Separate system message from conversation messages
         system_text: str | None = None
@@ -97,7 +92,7 @@ class ClaudeAdapter:
         if system_text is not None:
             kwargs["system"] = system_text
 
-        response = self._client.messages.create(**kwargs)  # type: ignore[arg-type]
+        response = await self._client.messages.create(**kwargs)  # type: ignore[arg-type]
 
         content = ""
         if response.content:
