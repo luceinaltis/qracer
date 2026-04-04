@@ -1,0 +1,23 @@
+name: Notify qracer-bot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram notification
+        run: |
+          TEXT="🔔 *PR #${{ github.event.pull_request.number }}* — ${{ github.event.action }}
+
+*${{ github.event.pull_request.title }}*
+Branch: \`${{ github.event.pull_request.head.ref }}\`
+By: ${{ github.event.pull_request.user.login }}
+${{ github.event.pull_request.html_url }}"
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d parse_mode="Markdown" \
+            --data-urlencode text="$TEXT"
