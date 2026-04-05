@@ -395,7 +395,11 @@ class TestComparisonSynthesizer:
             }
         )
         synth = ComparisonSynthesizer(llm)
-        intent = Intent(IntentType.COMPARISON, tickers=["AAPL", "MSFT"], raw_query="Compare AAPL and MSFT")
+        intent = Intent(
+            IntentType.COMPARISON,
+            tickers=["AAPL", "MSFT"],
+            raw_query="Compare AAPL and MSFT",
+        )
         per_ticker = {
             "AAPL": [_ok_result("price_event"), _ok_result("fundamentals")],
             "MSFT": [_ok_result("price_event"), _ok_result("fundamentals")],

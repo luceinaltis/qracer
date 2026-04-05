@@ -65,8 +65,10 @@ class Intent:
 _SYSTEM_PROMPT = """\
 You are a query classifier for a financial analysis system.
 Given a user query, return a JSON object with:
-- "intent": one of event_analysis, deep_dive, alpha_hunt, macro_query, cross_market, follow_up, comparison
-- "tickers": list of stock tickers mentioned (uppercase, empty list if none)
+- "intent": one of event_analysis, deep_dive, alpha_hunt,
+  macro_query, cross_market, follow_up, comparison
+- "tickers": list of stock tickers mentioned (uppercase,
+  empty list if none)
 
 Rules:
 - "Why did X move/spike/drop" → event_analysis
