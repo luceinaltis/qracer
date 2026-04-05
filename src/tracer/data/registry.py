@@ -73,7 +73,15 @@ class DataRegistry:
         last_exc: Exception | None = None
         for adapter_name, adapter in adapters:
             try:
-                # Quick validation: if the adapter is callable, just return it
+                # Validate protocol conformance if the capability is checkable
+                if not isinstance(adapter, capability):
+                    raise TypeError(
+                        f"Adapter '{adapter_name}' does not satisfy {capability.__name__}"
+                    )
+                # Run optional health check if the adapter exposes one
+                health = getattr(adapter, "health_check", None)
+                if callable(health):
+                    health()
                 return adapter
             except Exception as exc:
                 last_exc = exc
@@ -84,8 +92,7 @@ class DataRegistry:
                     exc,
                 )
 
-        # All adapters failed — should not reach here since return is inside try,
-        # but kept for safety.
+        # All adapters failed
         if last_exc is not None:
             raise last_exc
         raise KeyError(f"No adapter registered for capability {capability.__name__}")

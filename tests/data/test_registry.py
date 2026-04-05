@@ -116,6 +116,71 @@ class TestDataRegistry:
         assert registry.get_all(PriceProvider) == []
 
 
+class NonConformingAdapter:
+    """Adapter that does NOT implement PriceProvider methods."""
+
+    def do_something(self) -> str:
+        return "not a price provider"
+
+
+class HealthCheckFailingAdapter:
+    """Adapter that conforms to PriceProvider but fails health_check."""
+
+    async def get_price(self, ticker: str) -> float:
+        return 0.0
+
+    async def get_ohlcv(self, ticker: str, start: date, end: date) -> list[OHLCV]:
+        return []
+
+    def health_check(self) -> None:
+        raise RuntimeError("adapter unhealthy")
+
+
+class TestGetFallback:
+    """Tests for DataRegistry.get() fallback on validation failure."""
+
+    def test_non_conforming_adapter_skipped(self) -> None:
+        """An adapter that doesn't satisfy the protocol is skipped."""
+        registry = DataRegistry()
+        bad = NonConformingAdapter()
+        good = FakePriceAdapter()
+        registry.register("bad", bad, [PriceProvider])
+        registry.register("good", good, [PriceProvider])
+        assert registry.get(PriceProvider) is good
+
+    def test_health_check_failure_triggers_fallback(self) -> None:
+        """An adapter whose health_check() raises is skipped."""
+        registry = DataRegistry()
+        unhealthy = HealthCheckFailingAdapter()
+        healthy = FakePriceAdapter()
+        registry.register("unhealthy", unhealthy, [PriceProvider])
+        registry.register("healthy", healthy, [PriceProvider])
+        assert registry.get(PriceProvider) is healthy
+
+    def test_all_non_conforming_raises(self) -> None:
+        """If all adapters fail validation, the last exception is raised."""
+        registry = DataRegistry()
+        registry.register("bad1", NonConformingAdapter(), [PriceProvider])
+        registry.register("bad2", NonConformingAdapter(), [PriceProvider])
+        with pytest.raises(TypeError, match="does not satisfy"):
+            registry.get(PriceProvider)
+
+    def test_all_unhealthy_raises(self) -> None:
+        """If all adapters fail health_check, the last exception is raised."""
+        registry = DataRegistry()
+        registry.register("sick1", HealthCheckFailingAdapter(), [PriceProvider])
+        registry.register("sick2", HealthCheckFailingAdapter(), [PriceProvider])
+        with pytest.raises(RuntimeError, match="adapter unhealthy"):
+            registry.get(PriceProvider)
+
+    def test_healthy_adapter_returned_directly(self) -> None:
+        """A conforming adapter without health_check is returned immediately."""
+        registry = DataRegistry()
+        adapter = FakePriceAdapter()
+        registry.register("ok", adapter, [PriceProvider])
+        assert registry.get(PriceProvider) is adapter
+
+
 class FailingPriceAdapter:
     """Adapter that always raises on get_price."""
 
