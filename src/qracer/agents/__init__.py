@@ -1,4 +1,4 @@
-"""Agent roles for the Tracer pipeline."""
+"""Agent roles for the QRacer pipeline."""
 
 from qracer.agents.analyst import Analyst
 from qracer.agents.base import BaseAgent
