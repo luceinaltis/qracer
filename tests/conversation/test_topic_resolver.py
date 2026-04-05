@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from tracer.conversation.context import ConversationContext
-from tracer.conversation.topic_resolver import TopicResolution, TopicSource, resolve_unknown_topic
+from tracer.conversation.topic_resolver import TopicSource, resolve_unknown_topic
 from tracer.memory.memory_searcher import MemorySearcher, SearchResult
 
 

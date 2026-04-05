@@ -93,9 +93,7 @@ def _local_search(query: str, context: ConversationContext) -> TopicResolution:
     return TopicResolution(resolved=False, topic=None, source=TopicSource.LOCAL)
 
 
-def _embedding_search(
-    query: str, searcher: MemorySearcher
-) -> TopicResolution:
+def _embedding_search(query: str, searcher: MemorySearcher) -> TopicResolution:
     """Search past session summaries for the topic."""
     results = searcher.search(query, limit=1)
     if results:
