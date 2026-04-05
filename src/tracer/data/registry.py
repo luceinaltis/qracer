@@ -85,9 +85,7 @@ class DataRegistry:
                     result = health()
                     if inspect.isawaitable(result):
                         result.close()  # prevent coroutine leak
-                        raise TypeError(
-                            f"health_check() on '{adapter_name}' must be synchronous"
-                        )
+                        raise TypeError(f"health_check() on '{adapter_name}' must be synchronous")
                 return adapter
             except Exception as exc:
                 last_exc = exc
