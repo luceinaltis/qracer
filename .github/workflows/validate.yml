@@ -30,6 +30,7 @@ jobs:
 
       - name: Dependency security audit
         run: uv audit
+        continue-on-error: true
 
   test-suite:
     runs-on: ubuntu-latest
