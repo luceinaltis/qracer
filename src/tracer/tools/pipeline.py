@@ -38,11 +38,12 @@ def _is_stale(fetched_at: datetime, threshold_hours: int = _STALENESS_HOURS) -> 
 async def price_event(ticker: str, registry: DataRegistry) -> ToolResult:
     """Fetch recent price/OHLCV data for a ticker."""
     try:
-        provider: PriceProvider = registry.get(PriceProvider)
         end = date.today()
         start = end - timedelta(days=_DEFAULT_LOOKBACK_DAYS)
-        bars = await provider.get_ohlcv(ticker, start, end)
-        current_price = await provider.get_price(ticker)
+        bars = await registry.async_get_with_fallback(
+            PriceProvider, "get_ohlcv", ticker, start, end
+        )
+        current_price = await registry.async_get_with_fallback(PriceProvider, "get_price", ticker)
         now = datetime.now()
         return ToolResult(
             tool="price_event",
@@ -83,8 +84,9 @@ async def price_event(ticker: str, registry: DataRegistry) -> ToolResult:
 async def news(ticker: str, registry: DataRegistry, limit: int = 10) -> ToolResult:
     """Fetch recent news articles for a ticker."""
     try:
-        provider: NewsProvider = registry.get(NewsProvider)
-        articles = await provider.get_news(ticker, limit=limit)
+        articles = await registry.async_get_with_fallback(
+            NewsProvider, "get_news", ticker, limit=limit
+        )
         now = datetime.now()
         return ToolResult(
             tool="news",
@@ -118,8 +120,9 @@ async def news(ticker: str, registry: DataRegistry, limit: int = 10) -> ToolResu
 async def insider(ticker: str, registry: DataRegistry) -> ToolResult:
     """Fetch insider trading data for a ticker."""
     try:
-        provider: AlternativeProvider = registry.get(AlternativeProvider)
-        records = await provider.get_alternative(ticker, record_type="insider_trades")
+        records = await registry.async_get_with_fallback(
+            AlternativeProvider, "get_alternative", ticker, record_type="insider_trades"
+        )
         now = datetime.now()
         return ToolResult(
             tool="insider",
@@ -155,8 +158,9 @@ async def insider(ticker: str, registry: DataRegistry) -> ToolResult:
 async def macro(indicator: str, registry: DataRegistry) -> ToolResult:
     """Fetch a macroeconomic indicator."""
     try:
-        provider: MacroProvider = registry.get(MacroProvider)
-        data_point = await provider.get_indicator(indicator)
+        data_point = await registry.async_get_with_fallback(
+            MacroProvider, "get_indicator", indicator
+        )
         now = datetime.now()
         return ToolResult(
             tool="macro",
@@ -182,8 +186,9 @@ async def macro(indicator: str, registry: DataRegistry) -> ToolResult:
 async def fundamentals(ticker: str, registry: DataRegistry) -> ToolResult:
     """Fetch fundamental financial data for a ticker."""
     try:
-        provider: FundamentalProvider = registry.get(FundamentalProvider)
-        data = await provider.get_fundamentals(ticker)
+        data = await registry.async_get_with_fallback(
+            FundamentalProvider, "get_fundamentals", ticker
+        )
         now = datetime.now()
         return ToolResult(
             tool="fundamentals",
@@ -214,15 +219,18 @@ async def fundamentals(ticker: str, registry: DataRegistry) -> ToolResult:
 async def cross_market(tickers: list[str], registry: DataRegistry) -> ToolResult:
     """Fetch price data across multiple tickers for cross-market comparison."""
     try:
-        provider: PriceProvider = registry.get(PriceProvider)
         end = date.today()
         start = end - timedelta(days=_DEFAULT_LOOKBACK_DAYS)
         result_data: dict[str, object] = {"period_start": start.isoformat(), "tickers": {}}
 
         for ticker in tickers:
             try:
-                bars = await provider.get_ohlcv(ticker, start, end)
-                current_price = await provider.get_price(ticker)
+                bars = await registry.async_get_with_fallback(
+                    PriceProvider, "get_ohlcv", ticker, start, end
+                )
+                current_price = await registry.async_get_with_fallback(
+                    PriceProvider, "get_price", ticker
+                )
                 result_data["tickers"][ticker] = {  # type: ignore[index]
                     "current_price": current_price,
                     "bars": len(bars),
@@ -366,18 +374,18 @@ async def risk_check(
     Builds a portfolio snapshot from current prices, sizes the proposed
     position using conviction from the thesis, and checks portfolio limits.
     """
-    from tracer.data.providers import PriceProvider
     from tracer.risk.calculator import RiskCalculator
 
     try:
         calculator = RiskCalculator(config)
 
         # Gather current prices for all holdings.
-        price_provider: PriceProvider = registry.get(PriceProvider)
         prices: dict[str, float] = {}
         for holding in config.holdings:
             try:
-                prices[holding.ticker] = await price_provider.get_price(holding.ticker)
+                prices[holding.ticker] = await registry.async_get_with_fallback(
+                    PriceProvider, "get_price", holding.ticker
+                )
             except Exception as exc:
                 logger.warning("Could not fetch price for %s: %s", holding.ticker, exc)
 

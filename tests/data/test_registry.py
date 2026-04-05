@@ -116,6 +116,74 @@ class TestDataRegistry:
         assert registry.get_all(PriceProvider) == []
 
 
+class AsyncFailingPriceAdapter:
+    """Async adapter that always raises."""
+
+    async def get_price(self, ticker: str) -> float:
+        raise RuntimeError("primary down")
+
+    async def get_ohlcv(self, ticker: str, start: date, end: date) -> list[OHLCV]:
+        raise RuntimeError("primary down")
+
+
+class AsyncSucceedingPriceAdapter:
+    """Async adapter that returns a fixed price."""
+
+    async def get_price(self, ticker: str) -> float:
+        return 42.0
+
+    async def get_ohlcv(self, ticker: str, start: date, end: date) -> list[OHLCV]:
+        return []
+
+
+class TestAsyncGetWithFallback:
+    async def test_first_adapter_succeeds(self) -> None:
+        registry = DataRegistry()
+        registry.register("good", AsyncSucceedingPriceAdapter(), [PriceProvider])
+        registry.register("also_good", AsyncSucceedingPriceAdapter(), [PriceProvider])
+        result = await registry.async_get_with_fallback(PriceProvider, "get_price", "AAPL")
+        assert result == 42.0
+
+    async def test_first_fails_second_succeeds(self) -> None:
+        registry = DataRegistry()
+        registry.register("bad", AsyncFailingPriceAdapter(), [PriceProvider])
+        registry.register("good", AsyncSucceedingPriceAdapter(), [PriceProvider])
+        result = await registry.async_get_with_fallback(PriceProvider, "get_price", "AAPL")
+        assert result == 42.0
+
+    async def test_all_fail_raises_last(self) -> None:
+        registry = DataRegistry()
+        registry.register("bad1", AsyncFailingPriceAdapter(), [PriceProvider])
+        registry.register("bad2", AsyncFailingPriceAdapter(), [PriceProvider])
+        with pytest.raises(RuntimeError, match="primary down"):
+            await registry.async_get_with_fallback(PriceProvider, "get_price", "AAPL")
+
+    async def test_missing_capability_raises(self) -> None:
+        registry = DataRegistry()
+        with pytest.raises(KeyError, match="No adapter registered"):
+            await registry.async_get_with_fallback(PriceProvider, "get_price", "AAPL")
+
+    async def test_kwargs_forwarded(self) -> None:
+        class AsyncKwargAdapter:
+            async def fetch(self, ticker: str, period: str = "1d") -> str:
+                return f"{ticker}-{period}"
+
+        registry = DataRegistry()
+        registry.register("kw", AsyncKwargAdapter(), [PriceProvider])
+        result = await registry.async_get_with_fallback(PriceProvider, "fetch", "AAPL", period="5d")
+        assert result == "AAPL-5d"
+
+    async def test_ohlcv_fallback(self) -> None:
+        """Verify fallback works for get_ohlcv with positional args."""
+        registry = DataRegistry()
+        registry.register("bad", AsyncFailingPriceAdapter(), [PriceProvider])
+        registry.register("good", AsyncSucceedingPriceAdapter(), [PriceProvider])
+        result = await registry.async_get_with_fallback(
+            PriceProvider, "get_ohlcv", "AAPL", date.today(), date.today()
+        )
+        assert result == []
+
+
 class FailingPriceAdapter:
     """Adapter that always raises on get_price."""
 

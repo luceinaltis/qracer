@@ -42,12 +42,12 @@ class DataRegistry:
             self._adapters[cap].append((name, adapter))
 
     def get(self, capability: ProviderType, name: str | None = None) -> Any:
-        """Get an adapter by capability with fallback, optionally by explicit name.
+        """Get the highest-priority adapter for a capability.
 
-        When *name* is None the method tries each registered adapter in priority
-        order.  If instantiation or a health-check raises, it logs a warning and
-        falls through to the next adapter.  If all fail the last exception is
-        re-raised.
+        This is a simple lookup — it returns the adapter instance without
+        invoking any methods.  For call-level fallback (try the primary
+        adapter, fall through to the next on failure) use
+        :meth:`get_with_fallback` or :meth:`async_get_with_fallback`.
 
         Args:
             capability: The provider protocol to look up.
@@ -69,26 +69,7 @@ class DataRegistry:
                     return adapter
             raise KeyError(f"No adapter named '{name}' for capability {capability.__name__}")
 
-        # Try adapters in priority order with fallback
-        last_exc: Exception | None = None
-        for adapter_name, adapter in adapters:
-            try:
-                # Quick validation: if the adapter is callable, just return it
-                return adapter
-            except Exception as exc:
-                last_exc = exc
-                logger.warning(
-                    "Adapter '%s' for %s failed, trying next: %s",
-                    adapter_name,
-                    capability.__name__,
-                    exc,
-                )
-
-        # All adapters failed — should not reach here since return is inside try,
-        # but kept for safety.
-        if last_exc is not None:
-            raise last_exc
-        raise KeyError(f"No adapter registered for capability {capability.__name__}")
+        return adapters[0][1]
 
     def get_with_fallback(
         self,
@@ -121,6 +102,51 @@ class DataRegistry:
             try:
                 fn = getattr(adapter, method)
                 return fn(*args, **kwargs)
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    "Adapter '%s'.%s failed, trying next: %s",
+                    adapter_name,
+                    method,
+                    exc,
+                )
+
+        raise last_exc  # type: ignore[misc]
+
+    async def async_get_with_fallback(
+        self,
+        capability: ProviderType,
+        method: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Call an async *method* on each adapter for *capability* until one succeeds.
+
+        Same as :meth:`get_with_fallback` but awaits the adapter method,
+        making it suitable for the async pipeline tools.
+
+        Args:
+            capability: The provider protocol to look up.
+            method: The async method name to call on the adapter.
+            *args: Positional arguments forwarded to the method.
+            **kwargs: Keyword arguments forwarded to the method.
+
+        Returns:
+            The return value from the first successful adapter call.
+
+        Raises:
+            KeyError: If no adapter is registered for the capability.
+            Exception: The last exception if all adapters fail.
+        """
+        adapters = self._adapters.get(capability)
+        if not adapters:
+            raise KeyError(f"No adapter registered for capability {capability.__name__}")
+
+        last_exc: Exception | None = None
+        for adapter_name, adapter in adapters:
+            try:
+                fn = getattr(adapter, method)
+                return await fn(*args, **kwargs)
             except Exception as exc:
                 last_exc = exc
                 logger.warning(
