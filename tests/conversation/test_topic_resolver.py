@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from tracer.conversation.context import ConversationContext
 from tracer.conversation.topic_resolver import TopicSource, resolve_unknown_topic
-from tracer.memory.memory_searcher import MemorySearcher, SearchResult
+from tracer.memory.memory_searcher import MemorySearcher
 
 
 def _ctx(topics: list[str] | None = None) -> ConversationContext:
@@ -44,7 +44,9 @@ class TestEmbeddingSearch:
         ctx = _ctx()
         searcher = MemorySearcher()
         searcher.index_summary("sess_aapl", "# AAPLA Analysis\nAAPL beat earnings...")
-        result = await resolve_unknown_topic("AAPL quarterly results", ctx, memory_searcher=searcher)
+        result = await resolve_unknown_topic(
+            "AAPL quarterly results", ctx, memory_searcher=searcher
+        )
         assert result.resolved is True
         assert result.source == TopicSource.EMBEDDING
         searcher.close()
@@ -62,7 +64,7 @@ class TestWebSearch:
         ctx = _ctx()
 
         def fake_search(query: str) -> str:
-            return f"Bitcoin is a cryptocurrency..."
+            return "Bitcoin is a cryptocurrency..."
 
         result = await resolve_unknown_topic("What is Bitcoin?", ctx, web_search_fn=fake_search)
         assert result.resolved is True
