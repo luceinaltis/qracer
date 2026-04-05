@@ -90,6 +90,9 @@ class TestSessionCompactor:
         await compactor.compact(session_logger)
 
         provider = mock_registry.get(Role.REPORTER)
+        from unittest.mock import AsyncMock, MagicMock
+
+        assert isinstance(provider, AsyncMock | MagicMock)
         call_args = provider.complete.call_args[0][0]
         user_msg = call_args.messages[1].content
         assert "[Turn 1] user:" in user_msg

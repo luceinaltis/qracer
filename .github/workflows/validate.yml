@@ -28,6 +28,10 @@ jobs:
       - name: Pyright type check
         run: uv run pyright
 
+      - name: Dependency security audit
+        run: uv audit
+        continue-on-error: true
+
   test-suite:
     runs-on: ubuntu-latest
     steps:
