@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 class TopicSource(str, Enum):
     """Where the topic was resolved from."""
+
     LOCAL = "local"
     EMBEDDING = "embedding"
     WEB = "web"
@@ -73,9 +74,7 @@ async def resolve_unknown_topic(
         resolved=False,
         topic=None,
         source=TopicSource.UNKNOWN,
-        fallback_message=(
-            f"I'm not sure about '{query}'. Can you tell me more about it?"
-        ),
+        fallback_message=(f"I'm not sure about '{query}'. Can you tell me more about it?"),
     )
 
 
