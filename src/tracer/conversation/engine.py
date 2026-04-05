@@ -450,18 +450,23 @@ class ConversationEngine:
             intent.tools,
         )
 
-        # 2. Comparison branch: run per-ticker analysis and synthesize table.
+        # 2. Comparison branch: run per-ticker analysis concurrently and synthesize table.
         if intent.intent_type == IntentType.COMPARISON and len(intent.tickers) >= 2:
-            per_ticker_results: dict[str, list[ToolResult]] = {}
-            for ticker in intent.tickers:
-                single_intent = Intent(
+            single_intents = [
+                Intent(
                     intent_type=IntentType.COMPARISON,
                     tickers=[ticker],
                     tools=intent.tools,
                     raw_query=intent.raw_query,
                 )
-                results = await _invoke_tools(intent.tools, single_intent, self._data)
-                per_ticker_results[ticker] = results
+                for ticker in intent.tickers
+            ]
+            gathered = await asyncio.gather(
+                *[_invoke_tools(si.tools, si, self._data) for si in single_intents]
+            )
+            per_ticker_results: dict[str, list[ToolResult]] = dict(
+                zip(intent.tickers, gathered)
+            )
 
             all_results = [r for results in per_ticker_results.values() for r in results]
             analysis = AnalysisResult(
