@@ -83,7 +83,7 @@ class DataRegistry:
                 health = getattr(adapter, "health_check", None)
                 if callable(health):
                     result = health()
-                    if inspect.isawaitable(result):
+                    if inspect.iscoroutine(result):
                         result.close()  # prevent coroutine leak
                         raise TypeError(f"health_check() on '{adapter_name}' must be synchronous")
                 return adapter
