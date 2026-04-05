@@ -205,10 +205,13 @@ class TestCrossMarket:
         assert "error" in result.data["tickers"]["MSFT"]
 
     async def test_registry_failure(self) -> None:
-        """If the registry itself fails, the tool returns failure."""
+        """If the registry has no providers, per-ticker errors are recorded."""
         registry = DataRegistry()  # empty — no providers
         result = await cross_market(["AAPL"], registry)
-        assert result.success is False
+        # cross_market handles per-ticker failures gracefully — the outer
+        # result succeeds but each ticker carries an error entry.
+        assert result.success is True
+        assert "error" in result.data["tickers"]["AAPL"]
 
 
 # ---------------------------------------------------------------------------
