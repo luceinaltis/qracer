@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
+from tracer.config.models import Holding, PortfolioConfig
 from tracer.conversation.engine import (
     AnalysisLoop,
     AnalysisResult,
@@ -351,6 +352,122 @@ class TestConversationEngine:
         assert len(engine.history) == 2
         assert engine.history[0]["role"] == "user"
         assert engine.history[1]["role"] == "assistant"
+
+    async def test_risk_check_called_when_thesis_and_holdings(self) -> None:
+        """Step 8: risk_check runs when trade thesis succeeds and portfolio has holdings."""
+        intent_resp = json.dumps({"intent": "event_analysis", "tickers": ["AAPL"]})
+        analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
+        thesis_json = json.dumps(
+            {
+                "entry_zone": [170.0, 175.0],
+                "target_price": 200.0,
+                "stop_loss": 160.0,
+                "catalyst": "AI revenue growth",
+                "catalyst_date": "Q2 2026",
+                "conviction": 8,
+                "summary": "Strong momentum thesis.",
+            }
+        )
+        synth_resp = "[ANALYSIS: AAPL]\nConviction: 8/10\nRisk-checked response"
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: intent_resp,
+                Role.ANALYST: analysis_resp,
+                Role.STRATEGIST: [thesis_json, synth_resp],
+            }
+        )
+
+        portfolio = PortfolioConfig(
+            holdings=[Holding(ticker="MSFT", shares=100, avg_cost=300.0)],
+        )
+        engine = ConversationEngine(llm, DataRegistry(), portfolio_config=portfolio)
+
+        with (
+            patch("tracer.conversation.engine._invoke_tools") as mock_invoke,
+            patch("tracer.conversation.engine.pipeline.risk_check") as mock_risk,
+        ):
+            mock_invoke.return_value = [_ok_result("price_event")]
+            mock_risk.return_value = _ok_result(
+                "risk_check", {"allocation_pct": 5.0, "limits_breached": []}
+            )
+            response = await engine.query("Analyze AAPL")
+
+        mock_risk.assert_called_once()
+        call_args = mock_risk.call_args
+        assert call_args[0][0] == "AAPL"  # ticker
+        assert call_args[0][1].ticker == "AAPL"  # TradeThesis
+        assert call_args[0][1].conviction == 8
+
+        # risk_check result should be appended
+        risk_results = [r for r in response.analysis.results if r.tool == "risk_check"]
+        assert len(risk_results) == 1
+
+    async def test_risk_check_skipped_without_holdings(self) -> None:
+        """Step 8 is skipped when portfolio has no holdings."""
+        intent_resp = json.dumps({"intent": "event_analysis", "tickers": ["AAPL"]})
+        analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
+        thesis_json = json.dumps(
+            {
+                "entry_zone": [170.0, 175.0],
+                "target_price": 200.0,
+                "stop_loss": 160.0,
+                "catalyst": "AI revenue growth",
+                "catalyst_date": None,
+                "conviction": 7,
+                "summary": "Thesis.",
+            }
+        )
+        synth_resp = "Response"
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: intent_resp,
+                Role.ANALYST: analysis_resp,
+                Role.STRATEGIST: [thesis_json, synth_resp],
+            }
+        )
+
+        # No holdings → risk check should not run
+        engine = ConversationEngine(llm, DataRegistry())
+
+        with (
+            patch("tracer.conversation.engine._invoke_tools") as mock_invoke,
+            patch("tracer.conversation.engine.pipeline.risk_check") as mock_risk,
+        ):
+            mock_invoke.return_value = [_ok_result("price_event")]
+            await engine.query("Analyze AAPL")
+
+        mock_risk.assert_not_called()
+
+    async def test_risk_check_skipped_without_thesis(self) -> None:
+        """Step 8 is skipped when trade thesis generation fails."""
+        intent_resp = json.dumps({"intent": "event_analysis", "tickers": ["AAPL"]})
+        analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
+        # Invalid JSON → thesis fails
+        synth_resp = "Plain text, not JSON"
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: intent_resp,
+                Role.ANALYST: analysis_resp,
+                Role.STRATEGIST: [synth_resp, synth_resp],
+            }
+        )
+
+        portfolio = PortfolioConfig(
+            holdings=[Holding(ticker="MSFT", shares=100, avg_cost=300.0)],
+        )
+        engine = ConversationEngine(llm, DataRegistry(), portfolio_config=portfolio)
+
+        with (
+            patch("tracer.conversation.engine._invoke_tools") as mock_invoke,
+            patch("tracer.conversation.engine.pipeline.risk_check") as mock_risk,
+        ):
+            mock_invoke.return_value = [_ok_result("price_event")]
+            await engine.query("Analyze AAPL")
+
+        mock_risk.assert_not_called()
 
     async def test_custom_thresholds(self) -> None:
         """Engine should accept custom max_iterations and confidence_threshold."""
