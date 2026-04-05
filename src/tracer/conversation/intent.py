@@ -26,6 +26,7 @@ class IntentType(str, Enum):
     MACRO_QUERY = "macro_query"
     CROSS_MARKET = "cross_market"
     FOLLOW_UP = "follow_up"
+    COMPARISON = "comparison"
 
 
 # Which pipeline tools each intent invokes by default.
@@ -42,6 +43,7 @@ INTENT_TOOL_MAP: dict[IntentType, list[str]] = {
     IntentType.MACRO_QUERY: ["macro"],
     IntentType.CROSS_MARKET: ["cross_market", "macro", "price_event"],
     IntentType.FOLLOW_UP: [],  # resolved from session context
+    IntentType.COMPARISON: ["price_event", "fundamentals", "news"],
 }
 
 
@@ -63,7 +65,7 @@ class Intent:
 _SYSTEM_PROMPT = """\
 You are a query classifier for a financial analysis system.
 Given a user query, return a JSON object with:
-- "intent": one of event_analysis, deep_dive, alpha_hunt, macro_query, cross_market, follow_up
+- "intent": one of event_analysis, deep_dive, alpha_hunt, macro_query, cross_market, follow_up, comparison
 - "tickers": list of stock tickers mentioned (uppercase, empty list if none)
 
 Rules:
@@ -73,6 +75,7 @@ Rules:
 - Questions about rates, inflation, GDP, macro → macro_query
 - Questions relating two markets/regions → cross_market
 - Short follow-ups referencing prior context → follow_up
+- "Compare X and Y", "X vs Y" (multiple tickers) → comparison
 
 Return ONLY valid JSON, no explanation."""
 
@@ -132,6 +135,8 @@ class IntentParser:
             return Intent(IntentType.MACRO_QUERY, tickers=tickers, raw_query=query)
         if any(w in q for w in ("cross", "affect", "impact", "correlation", "relationship")):
             return Intent(IntentType.CROSS_MARKET, tickers=tickers, raw_query=query)
+        if any(w in q for w in ("compare", " vs ", "versus")):
+            return Intent(IntentType.COMPARISON, tickers=tickers, raw_query=query)
 
         # Default to follow_up for short/ambiguous queries.
         return Intent(IntentType.FOLLOW_UP, tickers=tickers, raw_query=query)

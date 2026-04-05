@@ -14,7 +14,7 @@ from datetime import datetime
 
 from tracer.config.models import PortfolioConfig
 from tracer.conversation.context import ConversationContext, extract_context, resolve_pronoun
-from tracer.conversation.intent import Intent, IntentParser
+from tracer.conversation.intent import Intent, IntentParser, IntentType
 from tracer.data.registry import DataRegistry, build_registry
 from tracer.llm.providers import CompletionRequest, CompletionResponse, Message, Role
 from tracer.llm.registry import LLMRegistry
@@ -300,6 +300,87 @@ class ResponseSynthesizer:
         return "\n".join(lines)
 
 
+class ComparisonSynthesizer:
+    """Synthesizes a side-by-side comparison response for multiple tickers.
+
+    Runs analysis per ticker and produces a comparison table with a verdict.
+    """
+
+    def __init__(self, llm_registry: LLMRegistry) -> None:
+        self._llm = llm_registry
+
+    async def synthesize(
+        self, intent: Intent, per_ticker_results: dict[str, list[ToolResult]]
+    ) -> str:
+        """Generate a comparative response table with verdict."""
+        evidence_sections: list[str] = []
+        for ticker, results in per_ticker_results.items():
+            successful = [r for r in results if r.success]
+            evidence_sections.append(
+                f"--- {ticker} ---\n{_format_evidence(successful)}"
+            )
+        combined_evidence = "\n\n".join(evidence_sections)
+        tickers_str = ", ".join(intent.tickers)
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # Build the markdown table header dynamically.
+        header = "| Metric | " + " | ".join(intent.tickers) + " |"
+        separator = "|" + "---|" * (len(intent.tickers) + 1)
+
+        system = (
+            "You are a senior financial analyst. Compare the given tickers "
+            "side-by-side.\n\n"
+            "Use this EXACT format:\n"
+            f"[COMPARISON: {tickers_str} — {today}]\n\n"
+            f"{header}\n{separator}\n"
+            "| Price | ... |\n"
+            "| PE Ratio | ... |\n"
+            "| Revenue Growth | ... |\n"
+            "| Conviction | ... |\n"
+            "(add more rows as the data supports)\n\n"
+            "VERDICT\n"
+            "{{comparative analysis: which ticker is stronger and why, "
+            "1-3 sentences}}"
+        )
+        user_msg = (
+            f"Query: {intent.raw_query}\n\n"
+            f"Evidence per ticker:\n{combined_evidence}"
+        )
+
+        try:
+            provider = self._llm.get(Role.STRATEGIST)
+            response = await provider.complete(
+                CompletionRequest(
+                    messages=[
+                        Message(role="system", content=system),
+                        Message(role="user", content=user_msg),
+                    ],
+                    max_tokens=2048,
+                    temperature=0.2,
+                )
+            )
+            return response.content
+        except Exception:
+            logger.warning("ComparisonSynthesizer failed, returning fallback", exc_info=True)
+            return self._fallback_response(intent, per_ticker_results)
+
+    def _fallback_response(
+        self, intent: Intent, per_ticker_results: dict[str, list[ToolResult]]
+    ) -> str:
+        """Minimal plain-text fallback when the LLM is unavailable."""
+        lines = [f"[COMPARISON: {', '.join(intent.tickers)}]"]
+        lines.append(f"Query: {intent.raw_query}")
+        lines.append("")
+        for ticker, results in per_ticker_results.items():
+            lines.append(f"  {ticker}:")
+            for r in results:
+                status = "OK" if r.success else f"FAILED ({r.error})"
+                lines.append(f"    [{r.tool}] {status}")
+        lines.append("")
+        lines.append("(Full comparison unavailable — LLM error)")
+        return "\n".join(lines)
+
+
 class ConversationEngine:
     """Top-level orchestrator that wires together the conversational pipeline.
 
@@ -327,6 +408,7 @@ class ConversationEngine:
             confidence_threshold=confidence_threshold,
         )
         self._synthesizer = ResponseSynthesizer(llm_registry)
+        self._comparison_synthesizer = ComparisonSynthesizer(llm_registry)
         self._data = data_registry
         self._portfolio_config = portfolio_config or PortfolioConfig()
         self._history: list[dict] = []
@@ -368,10 +450,33 @@ class ConversationEngine:
             intent.tools,
         )
 
-        # 2. Invoke initial pipeline tools.
+        # 2. Comparison branch: run per-ticker analysis and synthesize table.
+        if intent.intent_type == IntentType.COMPARISON and len(intent.tickers) >= 2:
+            per_ticker_results: dict[str, list[ToolResult]] = {}
+            for ticker in intent.tickers:
+                single_intent = Intent(
+                    intent_type=IntentType.COMPARISON,
+                    tickers=[ticker],
+                    tools=intent.tools,
+                    raw_query=intent.raw_query,
+                )
+                results = await _invoke_tools(intent.tools, single_intent, self._data)
+                per_ticker_results[ticker] = results
+
+            all_results = [r for results in per_ticker_results.values() for r in results]
+            analysis = AnalysisResult(
+                results=all_results,
+                confidence=0.7,
+                iterations=1,
+            )
+            text = await self._comparison_synthesizer.synthesize(intent, per_ticker_results)
+            self._history.append({"role": "assistant", "content": text})
+            return EngineResponse(text=text, intent=intent, analysis=analysis)
+
+        # 3. Invoke initial pipeline tools (standard path).
         initial_results = await _invoke_tools(intent.tools, intent, self._data)
 
-        # 3. Run analysis loop.
+        # 4. Run analysis loop.
         analysis = await self._analysis_loop.run(intent, initial_results)
         logger.info(
             "Analysis complete: confidence=%.2f iterations=%d",
@@ -379,7 +484,7 @@ class ConversationEngine:
             analysis.iterations,
         )
 
-        # 4. Trade thesis generation (step 7) — only when tickers are present.
+        # 5. Trade thesis generation (step 7) — only when tickers are present.
         if intent.tickers:
             thesis_result = await pipeline.trade_thesis(
                 intent.tickers[0], analysis.results, self._llm
@@ -402,7 +507,7 @@ class ConversationEngine:
                 except (KeyError, ValueError, TypeError):
                     logger.warning("Failed to reconstruct TradeThesis from result")
 
-        # 5. Risk check (step 8) — only when a trade thesis was produced.
+        # 6. Risk check (step 8) — only when a trade thesis was produced.
         if analysis.trade_thesis is not None and self._portfolio_config.holdings:
             risk_result = await pipeline.risk_check(
                 analysis.trade_thesis.ticker,
@@ -412,7 +517,7 @@ class ConversationEngine:
             )
             analysis.results.append(risk_result)
 
-        # 6. Synthesize response.
+        # 7. Synthesize response.
         text = await self._synthesizer.synthesize(intent, analysis)
 
         self._history.append({"role": "assistant", "content": text})
