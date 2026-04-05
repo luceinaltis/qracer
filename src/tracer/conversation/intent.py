@@ -125,6 +125,12 @@ class IntentParser:
         # Extract uppercase tickers (simple heuristic: 1-5 letter uppercase words).
         tickers = _extract_tickers(query)
 
+        # Check for COMPARISON first when multiple tickers + compare keywords.
+        # This must be checked BEFORE other patterns to avoid misclassification
+        # (e.g. "Compare AAPL spike" should be comparison, not event_analysis).
+        if len(tickers) >= 2 and any(w in q for w in ("compare", " vs ", "versus")):
+            return Intent(IntentType.COMPARISON, tickers=tickers, raw_query=query)
+
         if any(w in q for w in ("spike", "drop", "crash", "move", "why did", "fell", "rose")):
             return Intent(IntentType.EVENT_ANALYSIS, tickers=tickers, raw_query=query)
         if any(w in q for w in ("full analysis", "deep dive", "tell me about", "analyze")):
