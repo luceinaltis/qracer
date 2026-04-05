@@ -94,7 +94,7 @@ class ProviderPlugin(Protocol):
 
 | Type | Location | Install |
 |------|----------|---------|
-| Built-in | `src/tracer/data/adapters/` | Included in project |
+| Built-in | `src/qracer/data/adapters/` | Included in project |
 | Plugin | External package | `uv add qracer-provider-*` |
 
 ### Plugin Discovery
@@ -165,10 +165,10 @@ API key missing → adapter auto-skipped. Fallback kicks in transparently. Provi
 
 ## Storage
 
-DuckDB single-file database (`tracer.db`). Append-only for market data, analytical queries optimized.
+DuckDB single-file database (`qracer.db`). Append-only for market data, analytical queries optimized.
 
 ```text
-DuckDB (tracer.db)
+DuckDB (qracer.db)
 ├── prices             - OHLCV time series (daily append)
 ├── prices_intraday    - tick/1min data during live sessions (ephemeral, pruned daily)
 ├── fundamentals       - valuation, financial statements (quarterly append)

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tracer.llm.providers import Role
+from qracer.llm.providers import Role
 
 
 class TestClaudeAdapterImport:
@@ -16,7 +16,7 @@ class TestClaudeAdapterImport:
             # Re-import to trigger the ImportError path
             import importlib
 
-            import tracer.llm.claude_adapter as mod
+            import qracer.llm.claude_adapter as mod
 
             importlib.reload(mod)
             with pytest.raises(ImportError, match="anthropic is not installed"):
@@ -25,7 +25,7 @@ class TestClaudeAdapterImport:
 
 class TestClaudeAdapterModelMapping:
     def test_default_model_map(self) -> None:
-        from tracer.llm.claude_adapter import DEFAULT_MODEL_MAP
+        from qracer.llm.claude_adapter import DEFAULT_MODEL_MAP
 
         assert "sonnet" in DEFAULT_MODEL_MAP[Role.RESEARCHER]
         assert "opus" in DEFAULT_MODEL_MAP[Role.ANALYST]
@@ -33,14 +33,14 @@ class TestClaudeAdapterModelMapping:
         assert "haiku" in DEFAULT_MODEL_MAP[Role.REPORTER]
 
     def test_cost_estimation(self) -> None:
-        from tracer.llm.claude_adapter import _estimate_cost
+        from qracer.llm.claude_adapter import _estimate_cost
 
         cost = _estimate_cost("claude-sonnet-4-20250514", 1000, 500)
         # 1000 * 3.0 / 1M + 500 * 15.0 / 1M = 0.003 + 0.0075 = 0.0105
         assert abs(cost - 0.0105) < 1e-6
 
     def test_cost_estimation_unknown_model(self) -> None:
-        from tracer.llm.claude_adapter import _estimate_cost
+        from qracer.llm.claude_adapter import _estimate_cost
 
         assert _estimate_cost("unknown-model", 1000, 500) == 0.0
 
@@ -57,7 +57,7 @@ class TestClaudeAdapterComplete:
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             import importlib
 
-            import tracer.llm.claude_adapter as mod
+            import qracer.llm.claude_adapter as mod
 
             importlib.reload(mod)
             adapter = mod.ClaudeAdapter(api_key="test-key")
@@ -68,7 +68,7 @@ class TestClaudeAdapterComplete:
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             import importlib
 
-            import tracer.llm.claude_adapter as mod
+            import qracer.llm.claude_adapter as mod
 
             importlib.reload(mod)
             custom = {role: "custom-model" for role in Role}

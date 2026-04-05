@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tracer.memory.session_logger import SessionLogger, TurnRecord
+from qracer.memory.session_logger import SessionLogger, TurnRecord
 
 
 @pytest.fixture

@@ -41,7 +41,7 @@ htmlcov/
 
 # Session memory (runtime data, not source code)
 memory/
-!src/tracer/memory/
+!src/qracer/memory/
 !tests/memory/
 
 # IDE

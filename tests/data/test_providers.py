@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from tracer.data.providers import (
+from qracer.data.providers import (
     OHLCV,
     AlternativeRecord,
     FundamentalData,

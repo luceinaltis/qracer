@@ -7,17 +7,17 @@ from datetime import date, datetime
 
 import pytest
 
-from tracer.agents import Analyst, BaseAgent, Reporter, Researcher, Strategist
-from tracer.data.providers import (
+from qracer.agents import Analyst, BaseAgent, Reporter, Researcher, Strategist
+from qracer.data.providers import (
     OHLCV,
     FundamentalData,
     MacroIndicator,
     NewsArticle,
 )
-from tracer.data.registry import DataRegistry
-from tracer.llm.providers import CompletionRequest, CompletionResponse, Role
-from tracer.llm.registry import LLMRegistry
-from tracer.models import Signal, SignalDirection
+from qracer.data.registry import DataRegistry
+from qracer.llm.providers import CompletionRequest, CompletionResponse, Role
+from qracer.llm.registry import LLMRegistry
+from qracer.models import Signal, SignalDirection
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -90,7 +90,7 @@ def _make_llm(content: str = "[]") -> tuple[LLMRegistry, FakeLLM]:
 
 def _make_data() -> DataRegistry:
     data = DataRegistry()
-    from tracer.data.providers import (
+    from qracer.data.providers import (
         FundamentalProvider,
         MacroProvider,
         NewsProvider,
@@ -116,7 +116,7 @@ class TestBaseAgent:
             BaseAgent(LLMRegistry(), DataRegistry())  # type: ignore[abstract]
 
     def test_successful_results_filters(self) -> None:
-        from tracer.models import ToolResult
+        from qracer.models import ToolResult
 
         results = [
             ToolResult(tool="a", success=True, data={"x": 1}, source="s"),
@@ -128,7 +128,7 @@ class TestBaseAgent:
         assert all(r.success for r in filtered)
 
     def test_format_tool_data(self) -> None:
-        from tracer.models import ToolResult
+        from qracer.models import ToolResult
 
         results = [
             ToolResult(tool="price", success=True, data={"ticker": "AAPL"}, source="P"),

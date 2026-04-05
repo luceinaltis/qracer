@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from tracer.conversation.context import (
+from qracer.conversation.context import (
     ConversationContext,
     extract_context,
     is_stale,
     resolve_pronoun,
 )
-from tracer.memory.session_logger import TurnRecord
+from qracer.memory.session_logger import TurnRecord
 
 
 def _turn(content: str, turn: int = 1, role: str = "user", ts: str | None = None) -> TurnRecord:

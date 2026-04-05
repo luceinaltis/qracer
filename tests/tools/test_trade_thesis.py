@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tracer.llm.providers import CompletionResponse, Role
-from tracer.llm.registry import LLMRegistry
-from tracer.models import ToolResult, TradeThesis
-from tracer.tools.pipeline import trade_thesis
+from qracer.llm.providers import CompletionResponse, Role
+from qracer.llm.registry import LLMRegistry
+from qracer.models import ToolResult, TradeThesis
+from qracer.tools.pipeline import trade_thesis
 
 
 def _llm_registry(response_content: str) -> LLMRegistry:

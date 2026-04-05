@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from unittest.mock import AsyncMock
 
-from tracer.data.providers import (
+from qracer.data.providers import (
     OHLCV,
     AlternativeProvider,
     AlternativeRecord,
@@ -17,8 +17,8 @@ from tracer.data.providers import (
     NewsProvider,
     PriceProvider,
 )
-from tracer.data.registry import DataRegistry
-from tracer.tools.pipeline import (
+from qracer.data.registry import DataRegistry
+from qracer.tools.pipeline import (
     cross_market,
     fundamentals,
     insider,

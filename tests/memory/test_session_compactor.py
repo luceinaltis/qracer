@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tracer.llm.providers import CompletionResponse, Role
-from tracer.llm.registry import LLMRegistry
-from tracer.memory.session_compactor import SessionCompactor
-from tracer.memory.session_logger import SessionLogger, TurnRecord
+from qracer.llm.providers import CompletionResponse, Role
+from qracer.llm.registry import LLMRegistry
+from qracer.memory.session_compactor import SessionCompactor
+from qracer.memory.session_logger import SessionLogger, TurnRecord
 
 
 @pytest.fixture
