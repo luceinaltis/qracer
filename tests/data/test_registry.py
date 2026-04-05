@@ -136,6 +136,19 @@ class HealthCheckFailingAdapter:
         raise RuntimeError("adapter unhealthy")
 
 
+class AsyncHealthCheckAdapter:
+    """Adapter with async health_check — should be rejected."""
+
+    async def get_price(self, ticker: str) -> float:
+        return 0.0
+
+    async def get_ohlcv(self, ticker: str, start: date, end: date) -> list[OHLCV]:
+        return []
+
+    async def health_check(self) -> None:
+        pass
+
+
 class TestGetFallback:
     """Tests for DataRegistry.get() fallback on validation failure."""
 
@@ -179,6 +192,15 @@ class TestGetFallback:
         adapter = FakePriceAdapter()
         registry.register("ok", adapter, [PriceProvider])
         assert registry.get(PriceProvider) is adapter
+
+    def test_async_health_check_triggers_fallback(self) -> None:
+        """An adapter with async health_check() is skipped (must be sync)."""
+        registry = DataRegistry()
+        bad = AsyncHealthCheckAdapter()
+        good = FakePriceAdapter()
+        registry.register("async_hc", bad, [PriceProvider])
+        registry.register("good", good, [PriceProvider])
+        assert registry.get(PriceProvider) is good
 
 
 class FailingPriceAdapter:

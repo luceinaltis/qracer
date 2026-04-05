@@ -6,6 +6,7 @@ If the primary adapter fails or is unavailable, the registry falls through to fa
 
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any
 
@@ -81,7 +82,12 @@ class DataRegistry:
                 # Run optional health check if the adapter exposes one
                 health = getattr(adapter, "health_check", None)
                 if callable(health):
-                    health()
+                    result = health()
+                    if inspect.isawaitable(result):
+                        result.close()  # prevent coroutine leak
+                        raise TypeError(
+                            f"health_check() on '{adapter_name}' must be synchronous"
+                        )
                 return adapter
             except Exception as exc:
                 last_exc = exc
