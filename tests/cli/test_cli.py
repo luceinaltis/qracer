@@ -33,8 +33,8 @@ class TestInstall:
         runner = CliRunner()
 
         with patch("qracer.cli._user_dir", return_value=home_dir):
-            # 1 credential prompt (ANTHROPIC_API_KEY) + currency
-            result = runner.invoke(main, ["install"], input="\nUSD\n")
+            # 3 credential prompts (ANTHROPIC, OPENAI, GOOGLE) + currency
+            result = runner.invoke(main, ["install"], input="\n\n\nUSD\n")
 
         assert result.exit_code == 0
         assert home_dir.is_dir()
@@ -51,7 +51,7 @@ class TestInstall:
 
         runner = CliRunner()
         with patch("qracer.cli._user_dir", return_value=home_dir):
-            result = runner.invoke(main, ["install"], input="\nUSD\n")
+            result = runner.invoke(main, ["install"], input="\n\n\nUSD\n")
 
         assert result.exit_code == 0
         assert "already exists" in result.output
@@ -63,8 +63,8 @@ class TestInstall:
         runner = CliRunner()
 
         with patch("qracer.cli._user_dir", return_value=home_dir):
-            # First prompt is ANTHROPIC_API_KEY (from providers.toml)
-            result = runner.invoke(main, ["install"], input="sk-ant-key123\nUSD\n")
+            # First prompt is ANTHROPIC_API_KEY, skip OPENAI and GOOGLE
+            result = runner.invoke(main, ["install"], input="sk-ant-key123\n\n\nUSD\n")
 
         assert result.exit_code == 0
         creds = (home_dir / "credentials.env").read_text()
@@ -75,8 +75,8 @@ class TestInstall:
         runner = CliRunner()
 
         with patch("qracer.cli._user_dir", return_value=home_dir):
-            # Skip ANTHROPIC_API_KEY prompt, set currency to EUR
-            result = runner.invoke(main, ["install"], input="\nEUR\n")
+            # Skip all credential prompts, set currency to EUR
+            result = runner.invoke(main, ["install"], input="\n\n\nEUR\n")
 
         assert result.exit_code == 0
         portfolio = (home_dir / "portfolio.toml").read_text(encoding="utf-8")

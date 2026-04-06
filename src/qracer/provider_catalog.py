@@ -29,4 +29,22 @@ BUILTIN_LLM_PROVIDERS: dict[str, tuple[str, list[str]]] = {
             "reporter",
         ],
     ),
+    "openai": (
+        "qracer.llm.openai_adapter.OpenAIAdapter",
+        [
+            "researcher",
+            "analyst",
+            "strategist",
+            "reporter",
+        ],
+    ),
+    "gemini": (
+        "qracer.llm.gemini_adapter.GeminiAdapter",
+        [
+            "researcher",
+            "analyst",
+            "strategist",
+            "reporter",
+        ],
+    ),
 }
