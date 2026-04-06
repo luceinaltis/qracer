@@ -9,8 +9,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from qracer.provider_catalog import BUILTIN_DATA_PROVIDERS
-
 # Provider protocol classes are used as capability keys (e.g. PriceProvider, NewsProvider).
 # pyright doesn't support type[Protocol], so we use type[Any] as the capability type.
 ProviderType = type[Any]
@@ -159,61 +157,3 @@ class DataRegistry:
     def capabilities(self) -> list[ProviderType]:
         """List all registered capabilities."""
         return list(self._adapters.keys())
-
-
-def _load_config_lazy() -> Any:
-    """Lazy import of load_config to avoid circular imports at module level."""
-    from qracer.config.loader import load_config
-
-    return load_config()
-
-
-def build_registry() -> DataRegistry:
-    """Build a DataRegistry from providers.toml configuration.
-
-    Reads the providers config, instantiates each enabled built-in adapter,
-    and registers it with its capabilities.  Providers are registered in
-    priority order (lower number = higher priority).
-    """
-    import importlib
-
-    config = _load_config_lazy()
-    registry = DataRegistry()
-
-    # Sort providers by priority (lower = higher priority)
-    sorted_providers = sorted(
-        config.providers.providers.items(),
-        key=lambda item: item[1].priority,
-    )
-
-    for name, prov_cfg in sorted_providers:
-        if not prov_cfg.enabled:
-            logger.debug("Skipping disabled provider: %s", name)
-            continue
-
-        if name not in BUILTIN_DATA_PROVIDERS:
-            logger.warning("Unknown provider '%s' in config, skipping", name)
-            continue
-
-        adapter_path, cap_paths = BUILTIN_DATA_PROVIDERS[name]
-
-        try:
-            # Import adapter class
-            module_path, class_name = adapter_path.rsplit(".", 1)
-            module = importlib.import_module(module_path)
-            adapter_cls = getattr(module, class_name)
-            adapter = adapter_cls()
-
-            # Import capability classes
-            caps: list[ProviderType] = []
-            for cap_path in cap_paths:
-                cap_mod_path, cap_name = cap_path.rsplit(".", 1)
-                cap_mod = importlib.import_module(cap_mod_path)
-                caps.append(getattr(cap_mod, cap_name))
-
-            registry.register(name, adapter, caps)
-            logger.info("Registered provider: %s", name)
-        except Exception:
-            logger.warning("Failed to instantiate provider '%s'", name, exc_info=True)
-
-    return registry

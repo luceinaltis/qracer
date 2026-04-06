@@ -10,7 +10,7 @@ from qracer.data.providers import (
     NewsProvider,
     PriceProvider,
 )
-from qracer.data.registry import DataRegistry, build_registry
+from qracer.data.registry import DataRegistry
 from qracer.data.yfinance_adapter import YfinanceAdapter
 
 __all__ = [
@@ -18,7 +18,6 @@ __all__ = [
     "AlternativeProvider",
     "AlternativeRecord",
     "DataRegistry",
-    "build_registry",
     "FundamentalData",
     "FundamentalProvider",
     "MacroIndicator",

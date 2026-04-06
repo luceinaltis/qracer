@@ -203,24 +203,42 @@ class RiskCalculator:
         )
 
     async def build_exposure_async(self, snapshot: PortfolioSnapshot) -> ExposureBreakdown:
-        """Build exposure breakdown with correlation/beta computed asynchronously."""
-        base = self.build_exposure(snapshot)
+        """Build exposure breakdown with async sector lookup and correlation/beta."""
+        # Async sector lookup via FundamentalProvider (falls back to hardcoded).
+        sector_values: dict[str, float] = {}
+        for h in snapshot.holdings:
+            sector = await self._sectors.get_sector_async(h.ticker)
+            sector_values[sector] = sector_values.get(sector, 0.0) + h.market_value
 
-        if self._correlation_engine is None or not snapshot.holdings:
-            return base
+        total = snapshot.total_value
+        sector_weights: dict[str, float] = {}
+        for sector, value in sector_values.items():
+            sector_weights[sector] = round(value / total * 100.0, 2) if total > 0 else 0.0
 
-        corr_result = await self._correlation_engine.compute(snapshot.holdings)
-        if corr_result is None:
-            return base
+        if sector_weights:
+            top_sector = max(sector_weights, key=lambda s: sector_weights[s])
+            top_sector_pct = sector_weights[top_sector]
+        else:
+            top_sector = "N/A"
+            top_sector_pct = 0.0
 
-        self._last_correlation = corr_result
+        # Correlation/beta computation.
+        portfolio_beta: float | None = None
+        correlation_avg: float | None = None
+
+        if self._correlation_engine is not None and snapshot.holdings:
+            corr_result = await self._correlation_engine.compute(snapshot.holdings)
+            if corr_result is not None:
+                self._last_correlation = corr_result
+                portfolio_beta = corr_result.portfolio_beta
+                correlation_avg = corr_result.correlation_avg
 
         return ExposureBreakdown(
-            sector_weights=base.sector_weights,
-            top_sector=base.top_sector,
-            top_sector_pct=base.top_sector_pct,
-            portfolio_beta=corr_result.portfolio_beta,
-            correlation_avg=corr_result.correlation_avg,
+            sector_weights=sector_weights,
+            top_sector=top_sector,
+            top_sector_pct=top_sector_pct,
+            portfolio_beta=portfolio_beta,
+            correlation_avg=correlation_avg,
         )
 
     def check_limits(self, snapshot: PortfolioSnapshot, exposure: ExposureBreakdown) -> list[str]:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from qracer.conversation.intent import Intent
+from qracer.conversation.intent import INTENT_TOOL_MAP, Intent
 from qracer.data.registry import DataRegistry
 from qracer.models import ToolResult
 from qracer.tools import pipeline
@@ -20,6 +20,15 @@ TOOL_DISPATCH: dict[str, str] = {
     "cross_market": "tickers",
     "memory_search": "query",
 }
+
+# Validate that all tools referenced in INTENT_TOOL_MAP exist in TOOL_DISPATCH.
+# This catches sync errors at import time rather than at runtime.
+_all_intent_tools = {t for tools in INTENT_TOOL_MAP.values() for t in tools}
+_unknown_tools = _all_intent_tools - set(TOOL_DISPATCH)
+if _unknown_tools:
+    raise RuntimeError(
+        f"INTENT_TOOL_MAP references unknown tools not in TOOL_DISPATCH: {_unknown_tools}"
+    )
 
 
 async def invoke_tool(
