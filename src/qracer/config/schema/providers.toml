@@ -13,6 +13,18 @@ priority = 100
 kind = "llm"
 api_key_env = "ANTHROPIC_API_KEY"
 
+[providers.openai]
+enabled = false
+priority = 50
+kind = "llm"
+api_key_env = "OPENAI_API_KEY"
+
+[providers.gemini]
+enabled = false
+priority = 50
+kind = "llm"
+api_key_env = "GOOGLE_API_KEY"
+
 # [providers.finnhub]
 # enabled = false
 # priority = 50
