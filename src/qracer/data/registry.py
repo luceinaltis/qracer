@@ -9,13 +9,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from qracer.provider_catalog import BUILTIN_DATA_PROVIDERS
+
 # Provider protocol classes are used as capability keys (e.g. PriceProvider, NewsProvider).
 # pyright doesn't support type[Protocol], so we use type[Any] as the capability type.
 ProviderType = type[Any]
 
 logger = logging.getLogger(__name__)
-
-from qracer.provider_catalog import BUILTIN_DATA_PROVIDERS
 
 
 class DataRegistry:
