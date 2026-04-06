@@ -6,8 +6,11 @@ price checks and news lookups.  Target: < 5 seconds end-to-end.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from qracer.conversation.intent import Intent, IntentType
 from qracer.models import ToolResult
+from qracer.risk.models import PortfolioSnapshot
 
 
 def format_quickpath(intent: Intent, results: list[ToolResult]) -> str:
@@ -20,6 +23,41 @@ def format_quickpath(intent: Intent, results: list[ToolResult]) -> str:
     if intent.intent_type == IntentType.QUICK_NEWS:
         return _format_quick_news(intent, results)
     return _format_generic(intent, results)
+
+
+def format_portfolio(snapshot: PortfolioSnapshot) -> str:
+    """Format a portfolio snapshot into a readable summary table."""
+    now = datetime.now().strftime("%H:%M")
+    lines = [f"Portfolio Summary (as of {now})"]
+    lines.append("")
+
+    if not snapshot.holdings:
+        lines.append("  No holdings configured.")
+        lines.append("  Add holdings to ~/.qracer/portfolio.toml")
+        return "\n".join(lines)
+
+    # Header
+    lines.append(f"  {'Ticker':<8}{'Shares':>8}{'Price':>12}{'Value':>14}{'P&L':>14}{'%':>8}")
+    lines.append("  " + "─" * 64)
+
+    total_pnl = 0.0
+    for h in snapshot.holdings:
+        sign = "+" if h.unrealized_pnl >= 0 else ""
+        lines.append(
+            f"  {h.ticker:<8}"
+            f"{h.shares:>8.0f}"
+            f"  ${h.current_price:>9,.2f}"
+            f"  ${h.market_value:>11,.2f}"
+            f"  {sign}${abs(h.unrealized_pnl):>10,.2f}"
+            f"  {sign}{h.unrealized_pnl_pct:.1f}%"
+        )
+        total_pnl += h.unrealized_pnl
+
+    lines.append("  " + "─" * 64)
+    sign = "+" if total_pnl >= 0 else ""
+    lines.append(f"  Total: ${snapshot.total_value:,.2f}  |  P&L: {sign}${abs(total_pnl):,.2f}")
+
+    return "\n".join(lines)
 
 
 def _format_price_check(intent: Intent, results: list[ToolResult]) -> str:
