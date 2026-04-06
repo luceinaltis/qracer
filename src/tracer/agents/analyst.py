@@ -62,7 +62,7 @@ class Analyst(BaseAgent):
             pass  # no MacroProvider registered
 
         data_text = self._format_tool_data(self._successful_results(results))
-        response = await self._complete(
+        return await self._complete_json(
             system=(
                 "You are a macro analyst. Given macroeconomic indicators, determine "
                 "the current market regime. Return a JSON object with keys: "
@@ -71,13 +71,6 @@ class Analyst(BaseAgent):
             ),
             user=f"Analyse these macro indicators:\n\n{data_text}",
         )
-
-        import json
-
-        try:
-            return json.loads(response.content)
-        except (json.JSONDecodeError, ValueError):
-            return {"raw": response.content}
 
     async def discover_cross_market(self, tickers: list[str]) -> dict:
         """Find cross-market signals and leading indicators across tickers.
@@ -151,7 +144,7 @@ class Analyst(BaseAgent):
             pass
 
         data_text = self._format_tool_data(self._successful_results(results))
-        response = await self._complete(
+        return await self._complete_json(
             system=(
                 "You are a cross-market analyst. Given price and news data across "
                 "multiple tickers, identify information asymmetry and leading "
@@ -161,13 +154,6 @@ class Analyst(BaseAgent):
             ),
             user=f"Find cross-market signals:\n\n{data_text}",
         )
-
-        import json
-
-        try:
-            return json.loads(response.content)
-        except (json.JSONDecodeError, ValueError):
-            return {"raw": response.content}
 
     async def run(self, tickers: list[str], **kwargs) -> dict:
         """Default entry point — runs cross-market discovery."""

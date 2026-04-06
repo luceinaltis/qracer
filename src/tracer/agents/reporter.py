@@ -5,6 +5,8 @@ Pipeline step: Alpha Report (step 7).
 
 from __future__ import annotations
 
+import json
+
 from tracer.agents.base import BaseAgent
 from tracer.llm.providers import Role
 from tracer.models import Report, Signal
@@ -35,8 +37,6 @@ class Reporter(BaseAgent):
         Returns:
             A Report with thesis, evidence chain, adversarial check, and verdict.
         """
-        import json
-
         if not signals:
             return Report(
                 title="No actionable signals",
@@ -69,7 +69,7 @@ class Reporter(BaseAgent):
         if context:
             context_text = f"\n\nAdditional context:\n{json.dumps(context, indent=2)}"
 
-        response = await self._complete(
+        report_data = await self._complete_json(
             system=(
                 "You are a financial report writer. Generate an alpha report in "
                 "this exact JSON format:\n"
@@ -87,11 +87,10 @@ class Reporter(BaseAgent):
                 f"Generate an alpha report for these signals:\n"
                 f"{json.dumps(signals_data, indent=2)}{context_text}"
             ),
+            fallback={},
         )
 
-        try:
-            report_data = json.loads(response.content)
-        except (json.JSONDecodeError, ValueError):
+        if not isinstance(report_data, dict):
             report_data = {}
 
         return Report(

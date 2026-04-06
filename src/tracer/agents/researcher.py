@@ -85,7 +85,7 @@ class Researcher(BaseAgent):
 
         # Ask LLM to rank and select
         data_text = self._format_tool_data(filtered)
-        response = await self._complete(
+        selected = await self._complete_json(
             system=(
                 "You are a market researcher. Given fundamental data for a set of "
                 "tickers, return a JSON array of tickers that are most actionable "
@@ -93,16 +93,10 @@ class Researcher(BaseAgent):
                 "quality. Return ONLY a JSON array of ticker strings."
             ),
             user=f"Screen the following tickers:\n\n{data_text}",
+            fallback=[r.data["ticker"] for r in filtered if "ticker" in r.data],
         )
 
-        # Parse LLM response — expect a JSON list of ticker strings
-        import json
-
-        try:
-            selected = json.loads(response.content)
-            if not isinstance(selected, list):
-                selected = tickers
-        except (json.JSONDecodeError, ValueError):
+        if not isinstance(selected, list):
             selected = [r.data["ticker"] for r in filtered if "ticker" in r.data]
 
         return [Stock(ticker=t, name=t) for t in selected if isinstance(t, str)]
@@ -177,7 +171,7 @@ class Researcher(BaseAgent):
             )
 
         data_text = self._format_tool_data(self._successful_results(results))
-        response = await self._complete(
+        return await self._complete_json(
             system=(
                 "You are a market researcher. Summarise the consensus view for "
                 "this ticker. Return a JSON object with keys: sentiment (bullish/"
@@ -185,13 +179,6 @@ class Researcher(BaseAgent):
             ),
             user=f"Build consensus view for {ticker}:\n\n{data_text}",
         )
-
-        import json
-
-        try:
-            return json.loads(response.content)
-        except (json.JSONDecodeError, ValueError):
-            return {"raw": response.content, "ticker": ticker}
 
     async def run(self, tickers: list[str], **kwargs) -> list[Stock]:
         """Default entry point — runs universe screening."""
