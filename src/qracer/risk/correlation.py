@@ -148,9 +148,7 @@ def compute_correlation_result(
                 # Already computed the symmetric pair.
                 corr_matrix[t1][t2] = corr_matrix[t2][t1]
             else:
-                r1, r2 = _align_returns(
-                    ticker_returns.get(t1, []), ticker_returns.get(t2, [])
-                )
+                r1, r2 = _align_returns(ticker_returns.get(t1, []), ticker_returns.get(t2, []))
                 corr_val = _correlation(r1, r2)
                 corr_matrix[t1][t2] = round(corr_val, 4)
                 pair_correlations.append(corr_val)
@@ -211,9 +209,7 @@ class CorrelationEngine:
                 bars = await self._provider.get_ohlcv(ticker, start, end)
                 ohlcv_data[ticker] = bars
 
-            benchmark_bars = await self._provider.get_ohlcv(
-                BENCHMARK_TICKER, start, end
-            )
+            benchmark_bars = await self._provider.get_ohlcv(BENCHMARK_TICKER, start, end)
         except Exception:
             logger.warning("Failed to fetch OHLCV data for correlation computation", exc_info=True)
             return None
