@@ -60,7 +60,9 @@ Resolution rules:
 
 ## Proactive Alerts
 
-During market hours, Tracer monitors for events relevant to the conversation context and pushes alerts:
+> **구현 예정** — 현재는 사용자 쿼리에 대한 응답만 지원합니다. 실시간 모니터링 및 자동 알림은 아직 구현되지 않았습니다.
+
+During market hours, qracer monitors for events relevant to the conversation context and pushes alerts:
 
 ### Alert Types
 
@@ -184,5 +186,5 @@ class ToolResult:
 | ≥2 tools fail in Research mode | Exit early; list missing data |
 | LLM call fails | Retry once; partial result if still failing |
 | Rate limit mid-query | Serve from cache if available |
-| WebSocket disconnect | Fall back to REST polling; note in session |
+| WebSocket disconnect (구현 예정) | Fall back to REST polling; note in session |
 | Alert flood | Rate-limit to 1 per ticker per 5 min |

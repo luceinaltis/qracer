@@ -76,6 +76,9 @@ Agent: "AAPL, right? Analysis from buy perspective?"
 ### 3.1 Technical Implementation
 
 **Memory Structure**
+
+> **구현 예정** — 현재는 인메모리 ConversationContext로 동작합니다.
+
 ```text
 Session Memory (Redis/SQLite)
 ├── session_id: uuid
@@ -279,6 +282,8 @@ System management commands only. Investment analysis via natural language.
 
 ## 5. Dashboard
 
+> **구현 예정** — 현재는 CLI REPL 인터페이스로 동작합니다.
+
 qracer main interface. Left sidebar menu + right info panel structure.
 
 ### Layout
@@ -414,23 +419,27 @@ After install, run `qracer install` for initial setup:
 ```text
 $ qracer install
 
-🎯 Starting qracer installation.
+Setting up qracer config in ~/.qracer
 
-1. Create config directory
-   Creating ~/.qracer/... [OK]
+  Created config.toml
+  Created providers.toml
+  Created portfolio.toml
 
-2. Data source setup
-   Enter Finnhub API key (optional): 
-   Enter FRED API key (optional):
+  Select LLM provider:
+    1. Claude (Anthropic)
+    2. OpenAI (GPT-4o)
+    3. Gemini (Google)
+  Choice [1]: 1
 
-3. Telegram notification setup (optional)
-   Bot Token: 
-   Chat ID:
+  ANTHROPIC_API_KEY: sk-ant-xxx...
 
-4. Portfolio initial setup
-   Base currency (USD/KRW): USD
+  Portfolio currency [USD]: USD
 
-✅ Install complete! Check commands with 'qracer --help'.
+✓ Setup complete! Claude (Anthropic) enabled as LLM provider.
+
+Next steps:
+  qracer status   — check configuration
+  qracer repl     — start interactive session
 ```
 
 ### Post-Install First Run
