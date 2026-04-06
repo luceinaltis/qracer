@@ -2,6 +2,7 @@
 
 Maps each query to an IntentType that determines which pipeline tools to invoke.
 Uses the researcher role (default: Claude Haiku) for fast classification.
+Supports context-aware pronoun resolution and confidence-based ambiguity handling.
 """
 
 from __future__ import annotations
@@ -10,11 +11,18 @@ import json
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from qracer.llm.providers import CompletionRequest, CompletionResponse, Message, Role
 from qracer.llm.registry import LLMRegistry
 
+if TYPE_CHECKING:
+    from qracer.conversation.context import ConversationContext
+
 logger = logging.getLogger(__name__)
+
+# Confidence threshold below which the parser signals ambiguity.
+CONFIDENCE_HIGH = 0.7
 
 
 class IntentType(str, Enum):
@@ -32,11 +40,20 @@ class IntentType(str, Enum):
     CROSS_MARKET = "cross_market"
     FOLLOW_UP = "follow_up"
     COMPARISON = "comparison"
+    # Alert intents
+    ALERT_SET = "alert_set"
+    ALERT_LIST = "alert_list"
 
 
 # Intents that use the QuickPath (no AnalysisLoop).
 QUICKPATH_INTENTS = frozenset(
-    {IntentType.PRICE_CHECK, IntentType.QUICK_NEWS, IntentType.PORTFOLIO_CHECK}
+    {
+        IntentType.PRICE_CHECK,
+        IntentType.QUICK_NEWS,
+        IntentType.PORTFOLIO_CHECK,
+        IntentType.ALERT_SET,
+        IntentType.ALERT_LIST,
+    }
 )
 
 # Which pipeline tools each intent invokes by default.
@@ -57,6 +74,8 @@ INTENT_TOOL_MAP: dict[IntentType, list[str]] = {
     IntentType.CROSS_MARKET: ["cross_market", "macro", "price_event"],
     IntentType.FOLLOW_UP: [],  # resolved from session context
     IntentType.COMPARISON: ["price_event", "fundamentals", "news"],
+    IntentType.ALERT_SET: [],  # handled by alert subsystem
+    IntentType.ALERT_LIST: [],  # handled by alert subsystem
 }
 
 
@@ -68,6 +87,9 @@ class Intent:
     tickers: list[str] = field(default_factory=list)
     tools: list[str] = field(default_factory=list)
     raw_query: str = ""
+    confidence: float = 1.0
+    ambiguous: bool = False
+    candidates: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         # If no explicit tools, fill from the default map.
@@ -79,8 +101,10 @@ _SYSTEM_PROMPT = """\
 You are a query classifier for a financial analysis system.
 Given a user query, return a JSON object with:
 - "intent": one of price_check, quick_news, portfolio_check, event_analysis, \
-deep_dive, alpha_hunt, macro_query, cross_market, follow_up, comparison
+deep_dive, alpha_hunt, macro_query, cross_market, follow_up, comparison, \
+alert_set, alert_list
 - "tickers": list of stock tickers mentioned (uppercase, empty list if none)
+- "confidence": float 0.0-1.0 indicating how confident you are in the classification
 
 Rules:
 - "What's AAPL at?", "Price of X", "How's X doing?" → price_check
@@ -93,6 +117,16 @@ Rules:
 - Questions relating two markets/regions → cross_market
 - Short follow-ups referencing prior context → follow_up
 - "Compare X and Y", "X vs Y" (multiple tickers) → comparison
+- "Alert me when X hits $Y", "Set alert for X" → alert_set
+- "Show my alerts", "List alerts" → alert_list
+
+Context pronouns:
+- "this", "it", "this stock" → refers to the current topic in context
+- "previous one" → refers to the previous topic
+- "another one" → suggests a different topic from history
+
+If the query is ambiguous or could map to multiple intents, set confidence low \
+and include "candidates" — a list of the top 2-3 possible intent names.
 
 Return ONLY valid JSON, no explanation."""
 
@@ -102,21 +136,47 @@ class IntentParser:
 
     Uses the researcher LLM role for fast, low-cost classification.
     Falls back to keyword matching if the LLM call fails.
+    Supports context-aware pronoun resolution when a ConversationContext is provided.
     """
 
     def __init__(self, llm_registry: LLMRegistry) -> None:
         self._llm_registry = llm_registry
 
-    async def parse(self, query: str) -> Intent:
+    async def parse(
+        self,
+        query: str,
+        context: "ConversationContext | None" = None,
+    ) -> Intent:
         """Parse a natural-language query into an Intent.
 
+        Args:
+            query: Raw user input.
+            context: Optional conversation context for pronoun resolution.
+
         Attempts LLM-based classification first, falls back to keyword matching.
+        Resolves pronouns from context and flags ambiguous intents.
         """
         try:
-            return await self._parse_with_llm(query)
+            intent = await self._parse_with_llm(query)
         except Exception:
             logger.warning("LLM intent parsing failed, falling back to keywords", exc_info=True)
-            return self._parse_with_keywords(query)
+            intent = self._parse_with_keywords(query)
+
+        # Resolve pronouns from context when no tickers were extracted.
+        if context is not None and not intent.tickers and context.current_topic:
+            resolved_tickers = _resolve_tickers_from_context(query, context)
+            if resolved_tickers:
+                intent = Intent(
+                    intent_type=intent.intent_type,
+                    tickers=resolved_tickers,
+                    tools=intent.tools,
+                    raw_query=intent.raw_query,
+                    confidence=intent.confidence,
+                    ambiguous=intent.ambiguous,
+                    candidates=intent.candidates,
+                )
+
+        return intent
 
     async def _parse_with_llm(self, query: str) -> Intent:
         provider = self._llm_registry.get(Role.RESEARCHER)
@@ -133,7 +193,17 @@ class IntentParser:
 
         intent_type = IntentType(parsed["intent"])
         tickers = [t.upper() for t in parsed.get("tickers", [])]
-        return Intent(intent_type=intent_type, tickers=tickers, raw_query=query)
+        confidence = float(parsed.get("confidence", 1.0))
+        candidates = parsed.get("candidates", [])
+        ambiguous = confidence < CONFIDENCE_HIGH
+        return Intent(
+            intent_type=intent_type,
+            tickers=tickers,
+            raw_query=query,
+            confidence=confidence,
+            ambiguous=ambiguous,
+            candidates=candidates,
+        )
 
     def _parse_with_keywords(self, query: str) -> Intent:
         """Keyword-based fallback when LLM is unavailable."""
@@ -145,6 +215,12 @@ class IntentParser:
         # QuickPath: portfolio check (no ticker needed).
         if any(w in q for w in ("portfolio", "my holdings", "my stocks", "p&l", "pnl", "holdings")):
             return Intent(IntentType.PORTFOLIO_CHECK, tickers=tickers, raw_query=query)
+
+        # Alert intents.
+        if any(w in q for w in ("set alert", "alert me", "notify me when", "alert when")):
+            return Intent(IntentType.ALERT_SET, tickers=tickers, raw_query=query)
+        if any(w in q for w in ("my alerts", "list alerts", "show alerts")):
+            return Intent(IntentType.ALERT_LIST, tickers=tickers, raw_query=query)
 
         # QuickPath: simple price check (single ticker, short query).
         if tickers and any(
@@ -186,3 +262,37 @@ def _extract_tickers(query: str) -> list[str]:
         if clean.isupper() and 1 <= len(clean) <= 5 and clean.isalpha():
             tickers.append(clean)
     return tickers
+
+
+def _resolve_tickers_from_context(
+    query: str,
+    context: "ConversationContext",
+) -> list[str]:
+    """Resolve tickers from conversation context using pronoun matching.
+
+    Checks the query for pronoun patterns (this/it, previous, another one)
+    and maps them to topics in the conversation context.
+    """
+    from qracer.conversation.context import resolve_pronoun
+
+    q = query.strip().lower()
+
+    resolved = resolve_pronoun(q, context)
+    if resolved is not None:
+        return [resolved]
+
+    # Also check if any pronoun appears as a substring of the query.
+    from qracer.conversation.constants import (
+        ANOTHER_PRONOUNS,
+        CURRENT_PRONOUNS,
+        PREVIOUS_PRONOUNS,
+    )
+
+    for pronoun_set in (CURRENT_PRONOUNS, PREVIOUS_PRONOUNS, ANOTHER_PRONOUNS):
+        for p in pronoun_set:
+            if p in q:
+                resolved = resolve_pronoun(p, context)
+                if resolved is not None:
+                    return [resolved]
+
+    return []

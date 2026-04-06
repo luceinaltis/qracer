@@ -209,6 +209,7 @@ DEPTH_DEEP = {"analyze", "detail", "detailed", "deep", "thorough", "comprehensiv
 # Pronouns that resolve to current or previous topic.
 CURRENT_PRONOUNS = {"this", "it", "this stock", "이거", "이것"}
 PREVIOUS_PRONOUNS = {"previous", "previous one", "전에 본 것"}
+ANOTHER_PRONOUNS = {"another", "another one", "something else", "다른 거"}
 
 MAX_TOPIC_STACK = 5
 DEFAULT_TURNS = 20

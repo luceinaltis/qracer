@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from qracer.conversation.constants import (
+    ANOTHER_PRONOUNS,
     CURRENT_PRONOUNS,
     DEFAULT_TURNS,
     DEPTH_DEEP,
@@ -104,6 +105,13 @@ def resolve_pronoun(pronoun: str, context: ConversationContext) -> str | None:
     if p in PREVIOUS_PRONOUNS:
         if len(context.topic_stack) > 1:
             return context.topic_stack[1]
+        return None
+
+    if p in ANOTHER_PRONOUNS:
+        # Suggest from stack excluding the current topic.
+        for topic in context.topic_stack:
+            if topic != context.current_topic:
+                return topic
         return None
 
     return None
