@@ -10,6 +10,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 from tracer.config.models import PortfolioConfig
 from tracer.conversation.analysis_loop import (
@@ -21,6 +22,7 @@ from tracer.conversation.analysis_loop import (
 from tracer.conversation.context import ConversationContext, extract_context, resolve_pronoun
 from tracer.conversation.dispatcher import invoke_tools
 from tracer.conversation.intent import Intent, IntentParser, IntentType
+from tracer.conversation.report_exporter import ReportExporter
 from tracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynthesizer
 from tracer.data.registry import DataRegistry, build_registry
 from tracer.llm.registry import LLMRegistry
@@ -57,6 +59,7 @@ class ConversationEngine:
         max_iterations: int = MAX_ITERATIONS,
         confidence_threshold: float = CONFIDENCE_THRESHOLD,
         session_logger: SessionLogger | None = None,
+        report_dir: Path | None = None,
     ) -> None:
         if data_registry is None:
             data_registry = build_registry()
@@ -75,13 +78,32 @@ class ConversationEngine:
         self._history: list[dict] = []
         self._session_logger = session_logger
         self._compactor = SessionCompactor(llm_registry) if session_logger else None
+        self._report_exporter = ReportExporter(report_dir) if report_dir else None
         self._context: ConversationContext = ConversationContext()
         self._turn_counter = 0
+        self._last_response: EngineResponse | None = None
 
     @property
     def history(self) -> list[dict]:
         """Turn history for the current session."""
         return list(self._history)
+
+    def save_last_report(self, fmt: str = "md") -> Path | None:
+        """Save the last analysis result as a report file.
+
+        Args:
+            fmt: ``"md"`` for Markdown, ``"json"`` for JSON.
+
+        Returns:
+            Path to the saved file, or None if no report exporter is
+            configured or no previous response exists.
+        """
+        if self._report_exporter is None or self._last_response is None:
+            return None
+        resp = self._last_response
+        if fmt == "json":
+            return self._report_exporter.save_json(resp.intent, resp.analysis, resp.text)
+        return self._report_exporter.save_markdown(resp.intent, resp.analysis, resp.text)
 
     def _log_turn(self, role: str, content: str, **kwargs: object) -> None:
         """Append a turn to the session log if a logger is configured."""
@@ -140,10 +162,13 @@ class ConversationEngine:
 
         # 2. Comparison branch: per-ticker analysis + comparison table.
         if intent.intent_type == IntentType.COMPARISON and len(intent.tickers) >= 2:
-            return await self._handle_comparison(intent)
+            response = await self._handle_comparison(intent)
+        else:
+            # 3. Standard analysis path.
+            response = await self._handle_standard(intent)
 
-        # 3. Standard analysis path.
-        return await self._handle_standard(intent)
+        self._last_response = response
+        return response
 
     async def _handle_comparison(self, intent: Intent) -> EngineResponse:
         """Run per-ticker analysis concurrently and synthesize comparison."""

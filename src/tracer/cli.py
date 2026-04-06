@@ -258,6 +258,22 @@ async def _repl_loop(engine: object) -> None:
             click.echo("Goodbye.")
             break
 
+        if user_input.lower() in ("save", "save analysis", "/save"):
+            path = engine.save_last_report()  # type: ignore[attr-defined]
+            if path:
+                click.echo(f"Saved to {path}\n")
+            else:
+                click.echo("No analysis to save.\n")
+            continue
+
+        if user_input.lower() in ("save json", "/save json"):
+            path = engine.save_last_report(fmt="json")  # type: ignore[attr-defined]
+            if path:
+                click.echo(f"Saved to {path}\n")
+            else:
+                click.echo("No analysis to save.\n")
+            continue
+
         try:
             response = await engine.query(user_input)  # type: ignore[attr-defined]
             click.echo()
@@ -290,7 +306,14 @@ def repl() -> None:
     session_id = uuid.uuid4().hex[:12]
     session_logger = SessionLogger(sessions_dir / f"{session_id}.jsonl")
 
-    engine = ConversationEngine(llm_registry, data_registry, session_logger=session_logger)
+    reports_dir = _user_dir() / "reports"
+
+    engine = ConversationEngine(
+        llm_registry,
+        data_registry,
+        session_logger=session_logger,
+        report_dir=reports_dir,
+    )
     asyncio.run(_repl_loop(engine))
 
 
