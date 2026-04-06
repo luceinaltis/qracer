@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -42,12 +43,26 @@ def main(ctx: click.Context) -> None:
 # qracer install
 # ---------------------------------------------------------------------------
 
-_CREDENTIAL_KEYS = [
-    ("FINNHUB_API_KEY", "Finnhub API key"),
-    ("FRED_API_KEY", "FRED API key"),
-    ("TELEGRAM_BOT_TOKEN", "Telegram bot token"),
-    ("TELEGRAM_CHAT_ID", "Telegram chat ID"),
-]
+
+def _collect_credential_prompts() -> list[tuple[str, str]]:
+    """Collect credential prompts from providers.toml (api_key_env fields).
+
+    Reads the schema defaults and any existing user config to discover
+    which providers declare an ``api_key_env``.  Returns a list of
+    ``(ENV_VAR_NAME, human label)`` pairs.
+    """
+    schema_data = _load_toml(SCHEMA_DIR / "providers.toml")
+    user_data = _load_toml(_user_dir() / "providers.toml")
+    merged = {
+        **schema_data.get("providers", {}),
+        **user_data.get("providers", {}),
+    }
+    result: list[tuple[str, str]] = []
+    for name, cfg in merged.items():
+        env_key = cfg.get("api_key_env")
+        if env_key:
+            result.append((env_key, f"{name} — {env_key}"))
+    return result
 
 
 @main.command()
@@ -72,7 +87,7 @@ def install() -> None:
     # 3. Prompt for credentials
     click.echo()
     creds: dict[str, str] = {}
-    for env_key, label in _CREDENTIAL_KEYS:
+    for env_key, label in _collect_credential_prompts():
         value = click.prompt(f"  {label}", default="", show_default=False).strip()
         if value:
             creds[env_key] = value
@@ -95,6 +110,14 @@ def install() -> None:
             portfolio_path.write_text(text, encoding="utf-8")
 
     click.echo("\n✓ Setup complete!")
+
+    # Warn about missing LLM credentials
+    if not creds.get("ANTHROPIC_API_KEY") and not os.environ.get("ANTHROPIC_API_KEY"):
+        click.echo(
+            "\n⚠ ANTHROPIC_API_KEY not set — LLM features will not work."
+            "\n  Set it via 'export ANTHROPIC_API_KEY=your-key' or re-run 'qracer install'."
+        )
+
     click.echo("\nNext steps:")
     click.echo("  qracer status   — check configuration")
     click.echo("  qracer config   — view merged config")
@@ -122,12 +145,29 @@ def status() -> None:
 
     cfg = load_config(force_reload=True)
 
-    # Providers
-    click.echo("\nProviders:")
-    if cfg.providers.providers:
-        for name, prov in cfg.providers.providers.items():
+    # Data providers
+    click.echo("\nData providers:")
+    data_providers = {n: p for n, p in cfg.providers.providers.items() if p.kind == "data"}
+    if data_providers:
+        for name, prov in data_providers.items():
             state = "enabled" if prov.enabled else "disabled"
             click.echo(f"  {name}: {state} (tier={prov.tier}, priority={prov.priority})")
+    else:
+        click.echo("  (none configured)")
+
+    # LLM providers
+    click.echo("\nLLM providers:")
+    llm_providers = {n: p for n, p in cfg.providers.providers.items() if p.kind == "llm"}
+    if llm_providers:
+        for name, prov in llm_providers.items():
+            env_key = prov.api_key_env
+            has_key = bool(env_key and (cfg.credentials.get(env_key) or os.environ.get(env_key)))
+            if not prov.enabled:
+                click.echo(f"  {name}: disabled")
+            elif has_key:
+                click.echo(f"  ✓ {name}: ready")
+            else:
+                click.echo(f"  ✗ {name}: {env_key} not set")
     else:
         click.echo("  (none configured)")
 
@@ -205,39 +245,57 @@ def _write_toml(path: Path, data: dict) -> None:  # type: ignore[type-arg]
 
 
 def _build_registries() -> tuple:  # type: ignore[type-arg]
-    """Build default LLM and data registries."""
+    """Build LLM and data registries from providers.toml + provider catalog."""
+    import importlib
+
     from qracer.data.registry import DataRegistry
     from qracer.llm.providers import Role
     from qracer.llm.registry import LLMRegistry
+    from qracer.provider_catalog import BUILTIN_DATA_PROVIDERS, BUILTIN_LLM_PROVIDERS
 
+    config = load_config()
     llm_registry = LLMRegistry()
     data_registry = DataRegistry()
 
-    try:
-        from qracer.llm.claude_adapter import ClaudeAdapter
+    sorted_providers = sorted(
+        config.providers.providers.items(),
+        key=lambda item: item[1].priority,
+    )
 
-        adapter = ClaudeAdapter()
-        llm_registry.register(
-            "claude",
-            adapter,
-            [Role.RESEARCHER, Role.ANALYST, Role.STRATEGIST, Role.REPORTER],
-        )
-    except Exception:
-        logger.warning("Claude adapter unavailable — LLM calls will fail", exc_info=True)
+    for name, prov_cfg in sorted_providers:
+        if not prov_cfg.enabled:
+            continue
 
-    try:
-        from qracer.data.providers import (
-            FundamentalProvider,
-            NewsProvider,
-            PriceProvider,
-        )
-        from qracer.data.yfinance_adapter import YfinanceAdapter
+        if prov_cfg.kind == "data" and name in BUILTIN_DATA_PROVIDERS:
+            adapter_path, cap_paths = BUILTIN_DATA_PROVIDERS[name]
+            try:
+                mod_path, cls_name = adapter_path.rsplit(".", 1)
+                adapter_cls = getattr(importlib.import_module(mod_path), cls_name)
+                adapter = adapter_cls()
+                caps = []
+                for cp in cap_paths:
+                    cp_mod, cp_name = cp.rsplit(".", 1)
+                    caps.append(getattr(importlib.import_module(cp_mod), cp_name))
+                data_registry.register(name, adapter, caps)
+            except Exception:
+                logger.warning("Data provider '%s' unavailable", name, exc_info=True)
 
-        yf = YfinanceAdapter()
-        caps: list[type] = [PriceProvider, FundamentalProvider, NewsProvider]
-        data_registry.register("yfinance", yf, caps)  # type: ignore[arg-type]
-    except Exception:
-        logger.warning("yfinance adapter unavailable — data calls will fail", exc_info=True)
+        elif prov_cfg.kind == "llm" and name in BUILTIN_LLM_PROVIDERS:
+            adapter_path, role_values = BUILTIN_LLM_PROVIDERS[name]
+            try:
+                mod_path, cls_name = adapter_path.rsplit(".", 1)
+                adapter_cls = getattr(importlib.import_module(mod_path), cls_name)
+                # Inject API key from credentials if declared
+                api_key = None
+                if prov_cfg.api_key_env:
+                    api_key = config.credentials.get(prov_cfg.api_key_env) or os.environ.get(
+                        prov_cfg.api_key_env
+                    )
+                adapter = adapter_cls(api_key=api_key)
+                roles = [Role(v) for v in role_values]
+                llm_registry.register(name, adapter, roles)
+            except Exception:
+                logger.warning("LLM provider '%s' unavailable", name, exc_info=True)
 
     return llm_registry, data_registry
 
@@ -264,6 +322,8 @@ Note: qracer provides research analysis only, not investment advice.
 
 async def _repl_loop(engine: object, watchlist: object) -> None:
     """Run the interactive read-eval-print loop."""
+    from qracer.config.loader import has_config_changed
+
     click.echo(BANNER)
 
     while True:
@@ -285,6 +345,15 @@ async def _repl_loop(engine: object, watchlist: object) -> None:
         if cmd in ("help", "/help"):
             click.echo(_HELP_TEXT)
             continue
+
+        # Hot-plug: reload config and rebuild registries if files changed
+        if has_config_changed():
+            try:
+                llm_reg, data_reg = _build_registries()
+                engine.update_registries(llm_reg, data_reg)  # type: ignore[attr-defined]
+                click.echo("⟳ Configuration reloaded.\n")
+            except Exception:
+                logger.warning("Config reload failed", exc_info=True)
 
         if cmd in ("save", "save analysis", "/save"):
             path = engine.save_last_report()  # type: ignore[attr-defined]

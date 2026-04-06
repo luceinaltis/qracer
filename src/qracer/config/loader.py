@@ -42,6 +42,26 @@ _CREDENTIALS_FILE = "credentials.env"
 
 # Lazy singleton
 _cached_config: QracerConfig | None = None
+_config_mtimes: dict[str, float] = {}
+
+_WATCHED_FILES = ("config.toml", "providers.toml", "portfolio.toml", "credentials.env")
+
+
+def _snapshot_mtimes() -> dict[str, float]:
+    """Return current mtime for each config file that exists on disk."""
+    snapshot: dict[str, float] = {}
+    for d in resolve_config_dirs():
+        for fname in _WATCHED_FILES:
+            path = d / fname
+            if path.is_file():
+                snapshot[str(path)] = path.stat().st_mtime
+    return snapshot
+
+
+def has_config_changed() -> bool:
+    """Return True if any config file was modified since the last load."""
+    current = _snapshot_mtimes()
+    return current != _config_mtimes
 
 
 def _user_dir() -> Path:
@@ -117,11 +137,13 @@ def _load_credentials() -> dict[str, str]:
 def load_config(*, force_reload: bool = False) -> QracerConfig:
     """Load and return the merged QracerConfig (lazy-cached singleton).
 
-    Pass *force_reload=True* to bypass the cache (useful in tests).
+    The config is automatically reloaded when any watched file's mtime
+    changes on disk (hot-plug).  Pass *force_reload=True* to bypass the
+    cache unconditionally (useful in tests).
     """
-    global _cached_config  # noqa: PLW0603
+    global _cached_config, _config_mtimes  # noqa: PLW0603
 
-    if _cached_config is not None and not force_reload:
+    if _cached_config is not None and not force_reload and not has_config_changed():
         return _cached_config
 
     dirs = resolve_config_dirs()
@@ -138,5 +160,6 @@ def load_config(*, force_reload: bool = False) -> QracerConfig:
         credentials=credentials,
     )
 
+    _config_mtimes = _snapshot_mtimes()
     _cached_config = config
     return config

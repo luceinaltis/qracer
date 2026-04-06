@@ -92,6 +92,22 @@ class ConversationEngine:
         self._context: ConversationContext = ConversationContext()
         self._turn_counter = 0
         self._last_response: EngineResponse | None = None
+        self._config_version = 0
+
+    def update_registries(self, llm_registry: LLMRegistry, data_registry: DataRegistry) -> None:
+        """Hot-swap registries when config changes at runtime."""
+        self._llm = llm_registry
+        self._intent_parser = IntentParser(llm_registry)
+        self._analysis_loop = AnalysisLoop(
+            llm_registry,
+            data_registry,
+            max_iterations=self._analysis_loop._max_iterations,
+            confidence_threshold=self._analysis_loop._confidence_threshold,
+        )
+        self._synthesizer = ResponseSynthesizer(llm_registry)
+        self._comparison_synthesizer = ComparisonSynthesizer(llm_registry)
+        self._data = data_registry
+        self._config_version += 1
 
     @property
     def history(self) -> list[dict]:

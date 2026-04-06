@@ -23,6 +23,7 @@ class ProviderConfig(BaseModel):
     priority: int = 100
     tier: Literal["hot", "warm", "cold"] = "warm"
     api_key_env: str | None = None
+    kind: Literal["data", "llm"] = "data"
 
 
 class ProvidersConfig(BaseModel):
