@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from unittest.mock import AsyncMock, patch
+
+from helpers import failed_result as _failed_result
+from helpers import make_mock_llm_registry as _mock_llm_registry
+from helpers import ok_result as _ok_result
 
 from tracer.config.models import Holding, PortfolioConfig
 from tracer.conversation.engine import (
@@ -18,61 +21,8 @@ from tracer.conversation.engine import (
 )
 from tracer.conversation.intent import Intent, IntentType
 from tracer.data.registry import DataRegistry
-from tracer.llm.providers import CompletionResponse, Role
+from tracer.llm.providers import Role
 from tracer.llm.registry import LLMRegistry
-from tracer.models import ToolResult
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _mock_llm_registry(responses: dict[Role, str | list[str]]) -> LLMRegistry:
-    """Build an LLMRegistry with mock providers that return canned responses.
-
-    If a role maps to a list, responses are returned in order (pop from front).
-    """
-    registry = LLMRegistry()
-    for role, content in responses.items():
-        provider = AsyncMock()
-        if isinstance(content, list):
-            contents = list(content)
-
-            async def _complete(req, _contents=contents):
-                c = _contents.pop(0) if _contents else "{}"
-                return CompletionResponse(
-                    content=c, model="mock", input_tokens=10, output_tokens=5, cost=0.0
-                )
-
-            provider.complete = _complete
-        else:
-            provider.complete.return_value = CompletionResponse(
-                content=content, model="mock", input_tokens=10, output_tokens=5, cost=0.0
-            )
-        registry.register("mock", provider, [role])
-    return registry
-
-
-def _ok_result(tool: str, data: dict | None = None) -> ToolResult:
-    return ToolResult(
-        tool=tool,
-        success=True,
-        data=data or {"sample": "data"},
-        source="test",
-        fetched_at=datetime.now(),
-        is_stale=False,
-    )
-
-
-def _failed_result(tool: str) -> ToolResult:
-    return ToolResult(
-        tool=tool,
-        success=False,
-        data={},
-        source="test",
-        error="test error",
-    )
-
 
 # ---------------------------------------------------------------------------
 # _invoke_tool / _invoke_tools

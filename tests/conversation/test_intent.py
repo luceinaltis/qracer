@@ -6,6 +6,7 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+from helpers import make_single_role_registry
 
 from tracer.conversation.intent import (
     INTENT_TOOL_MAP,
@@ -14,7 +15,7 @@ from tracer.conversation.intent import (
     IntentType,
     _extract_tickers,
 )
-from tracer.llm.providers import CompletionResponse, Role
+from tracer.llm.providers import Role
 from tracer.llm.registry import LLMRegistry
 
 # ---------------------------------------------------------------------------
@@ -67,25 +68,10 @@ class TestExtractTickers:
 # ---------------------------------------------------------------------------
 
 
-def _make_registry(response_content: str) -> LLMRegistry:
-    """Build an LLMRegistry with a mock researcher provider."""
-    mock_provider = AsyncMock()
-    mock_provider.complete.return_value = CompletionResponse(
-        content=response_content,
-        model="mock",
-        input_tokens=10,
-        output_tokens=5,
-        cost=0.0,
-    )
-    registry = LLMRegistry()
-    registry.register("mock", mock_provider, [Role.RESEARCHER])
-    return registry
-
-
 class TestIntentParserLLM:
     async def test_event_analysis(self) -> None:
         body = json.dumps({"intent": "event_analysis", "tickers": ["AAPL"]})
-        parser = IntentParser(_make_registry(body))
+        parser = IntentParser(make_single_role_registry(Role.RESEARCHER, body))
         intent = await parser.parse("Why did AAPL spike 5% today?")
         assert intent.intent_type == IntentType.EVENT_ANALYSIS
         assert intent.tickers == ["AAPL"]
@@ -93,33 +79,33 @@ class TestIntentParserLLM:
 
     async def test_deep_dive(self) -> None:
         body = json.dumps({"intent": "deep_dive", "tickers": ["TSMC"]})
-        parser = IntentParser(_make_registry(body))
+        parser = IntentParser(make_single_role_registry(Role.RESEARCHER, body))
         intent = await parser.parse("Full analysis on TSMC")
         assert intent.intent_type == IntentType.DEEP_DIVE
         assert "fundamentals" in intent.tools
 
     async def test_macro_query(self) -> None:
         body = json.dumps({"intent": "macro_query", "tickers": []})
-        parser = IntentParser(_make_registry(body))
+        parser = IntentParser(make_single_role_registry(Role.RESEARCHER, body))
         intent = await parser.parse("Where are we in the rate cycle?")
         assert intent.intent_type == IntentType.MACRO_QUERY
         assert intent.tools == ["macro"]
 
     async def test_alpha_hunt(self) -> None:
         body = json.dumps({"intent": "alpha_hunt", "tickers": []})
-        parser = IntentParser(_make_registry(body))
+        parser = IntentParser(make_single_role_registry(Role.RESEARCHER, body))
         intent = await parser.parse("Where's the hidden alpha right now?")
         assert intent.intent_type == IntentType.ALPHA_HUNT
 
     async def test_cross_market(self) -> None:
         body = json.dumps({"intent": "cross_market", "tickers": []})
-        parser = IntentParser(_make_registry(body))
+        parser = IntentParser(make_single_role_registry(Role.RESEARCHER, body))
         intent = await parser.parse("How does Korea semi data affect US AI stocks?")
         assert intent.intent_type == IntentType.CROSS_MARKET
 
     async def test_follow_up(self) -> None:
         body = json.dumps({"intent": "follow_up", "tickers": []})
-        parser = IntentParser(_make_registry(body))
+        parser = IntentParser(make_single_role_registry(Role.RESEARCHER, body))
         intent = await parser.parse("What about insider trades?")
         assert intent.intent_type == IntentType.FOLLOW_UP
 
