@@ -357,6 +357,12 @@ class ConversationEngine:
                     intent.tickers[0],
                     thesis_result.error,
                 )
+                # Surface the failure reason so the synthesizer includes it.
+                reason = thesis_result.error or "unknown error"
+                if analysis.early_exit_reason:
+                    analysis.early_exit_reason += f"; Trade thesis failed: {reason}"
+                else:
+                    analysis.early_exit_reason = f"Trade thesis failed: {reason}"
 
         # Risk check (step 8) — only when a trade thesis was produced.
         if analysis.trade_thesis is not None and self._portfolio_config.holdings:
