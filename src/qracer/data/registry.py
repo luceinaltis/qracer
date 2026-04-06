@@ -15,13 +15,7 @@ ProviderType = type[Any]
 
 logger = logging.getLogger(__name__)
 
-# Built-in provider name → (adapter class import path, capabilities list import path)
-_BUILTIN_PROVIDERS: dict[str, tuple[str, list[str]]] = {
-    "yfinance": (
-        "qracer.data.yfinance_adapter.YfinanceAdapter",
-        ["qracer.data.providers.PriceProvider"],
-    ),
-}
+from qracer.provider_catalog import BUILTIN_DATA_PROVIDERS
 
 
 class DataRegistry:
@@ -197,11 +191,11 @@ def build_registry() -> DataRegistry:
             logger.debug("Skipping disabled provider: %s", name)
             continue
 
-        if name not in _BUILTIN_PROVIDERS:
+        if name not in BUILTIN_DATA_PROVIDERS:
             logger.warning("Unknown provider '%s' in config, skipping", name)
             continue
 
-        adapter_path, cap_paths = _BUILTIN_PROVIDERS[name]
+        adapter_path, cap_paths = BUILTIN_DATA_PROVIDERS[name]
 
         try:
             # Import adapter class
