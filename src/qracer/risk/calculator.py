@@ -7,6 +7,11 @@ from datetime import datetime
 from typing import Any
 
 from qracer.config.models import PortfolioConfig
+from qracer.risk.correlation import (
+    CorrelationEngine,
+    CorrelationResult,
+    correlation_adjustment,
+)
 from qracer.risk.models import (
     ExposureBreakdown,
     HoldingSnapshot,
@@ -111,10 +116,13 @@ class RiskCalculator:
         *,
         peak_value: float = 0.0,
         sector_resolver: SectorResolver | None = None,
+        correlation_engine: CorrelationEngine | None = None,
     ) -> None:
         self._config = config
         self._peak_value = peak_value
         self._sectors = sector_resolver or _default_resolver
+        self._correlation_engine = correlation_engine
+        self._last_correlation: CorrelationResult | None = None
 
     def build_snapshot(self, prices: dict[str, float]) -> PortfolioSnapshot:
         """Build a portfolio snapshot from current prices.
@@ -194,6 +202,27 @@ class RiskCalculator:
             correlation_avg=None,
         )
 
+    async def build_exposure_async(self, snapshot: PortfolioSnapshot) -> ExposureBreakdown:
+        """Build exposure breakdown with correlation/beta computed asynchronously."""
+        base = self.build_exposure(snapshot)
+
+        if self._correlation_engine is None or not snapshot.holdings:
+            return base
+
+        corr_result = await self._correlation_engine.compute(snapshot.holdings)
+        if corr_result is None:
+            return base
+
+        self._last_correlation = corr_result
+
+        return ExposureBreakdown(
+            sector_weights=base.sector_weights,
+            top_sector=base.top_sector,
+            top_sector_pct=base.top_sector_pct,
+            portfolio_beta=corr_result.portfolio_beta,
+            correlation_avg=corr_result.correlation_avg,
+        )
+
     def check_limits(self, snapshot: PortfolioSnapshot, exposure: ExposureBreakdown) -> list[str]:
         """Check portfolio limits and return descriptions of breached limits."""
         breached: list[str] = []
@@ -215,8 +244,19 @@ class RiskCalculator:
 
         return breached
 
-    def size_position(self, ticker: str, conviction: int, snapshot: PortfolioSnapshot) -> float:
-        """Compute position size as % of portfolio based on conviction."""
+    def size_position(
+        self,
+        ticker: str,
+        conviction: int,
+        snapshot: PortfolioSnapshot,
+        corr_result: CorrelationResult | None = None,
+    ) -> float:
+        """Compute position size as % of portfolio based on conviction.
+
+        When *corr_result* is provided (or previously cached via
+        ``build_exposure_async``), the allocation is reduced if the
+        ticker is highly correlated with existing large positions.
+        """
         if conviction >= 8:
             base_pct = 3.0 + (conviction - 8) * 1.0
         elif conviction >= 5:
@@ -231,6 +271,12 @@ class RiskCalculator:
 
         if sector_headroom < base_pct:
             base_pct = sector_headroom
+
+        # Apply correlation-based adjustment.
+        effective_corr = corr_result or self._last_correlation
+        if effective_corr is not None:
+            adj = correlation_adjustment(ticker, snapshot.holdings, effective_corr)
+            base_pct *= adj
 
         max_pos = self._config.limits.max_single_position_pct
         if base_pct > max_pos:
@@ -267,6 +313,26 @@ class RiskCalculator:
         """Run a full risk assessment."""
         snapshot = self.build_snapshot(prices)
         exposure = self.build_exposure(snapshot)
+        breached = self.check_limits(snapshot, exposure)
+
+        self.update_peak(snapshot.total_value)
+        drawdown_pct = self.compute_drawdown(snapshot.total_value)
+        alert_threshold = self._config.limits.max_drawdown_alert_pct
+        drawdown_alert = drawdown_pct > alert_threshold
+
+        return RiskAssessment(
+            snapshot=snapshot,
+            exposure=exposure,
+            limits_breached=breached,
+            max_drawdown_alert=drawdown_alert,
+            current_drawdown_pct=round(drawdown_pct, 2),
+            peak_value=round(self._peak_value, 2),
+        )
+
+    async def assess_async(self, prices: dict[str, float]) -> RiskAssessment:
+        """Run a full risk assessment with async correlation/beta computation."""
+        snapshot = self.build_snapshot(prices)
+        exposure = await self.build_exposure_async(snapshot)
         breached = self.check_limits(snapshot, exposure)
 
         self.update_peak(snapshot.total_value)
