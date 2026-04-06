@@ -27,14 +27,16 @@ from qracer.conversation.context import (
 )
 from qracer.conversation.dispatcher import invoke_tools
 from qracer.conversation.intent import QUICKPATH_INTENTS, Intent, IntentParser, IntentType
-from qracer.conversation.quickpath import format_quickpath
+from qracer.conversation.quickpath import format_portfolio, format_quickpath
 from qracer.conversation.report_exporter import ReportExporter
 from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynthesizer
+from qracer.data.providers import PriceProvider
 from qracer.data.registry import DataRegistry, build_registry
 from qracer.llm.registry import LLMRegistry
 from qracer.memory.session_compactor import SessionCompactor
 from qracer.memory.session_logger import SessionLogger, TurnRecord
 from qracer.models import ToolResult, TradeThesis
+from qracer.risk.calculator import RiskCalculator
 from qracer.tools import pipeline
 
 logger = logging.getLogger(__name__)
@@ -200,8 +202,11 @@ class ConversationEngine:
             intent.tools,
         )
 
-        # 2. QuickPath: template-based response, no AnalysisLoop.
-        if intent.intent_type in QUICKPATH_INTENTS:
+        # 2. Portfolio check — special QuickPath that uses RiskCalculator.
+        if intent.intent_type == IntentType.PORTFOLIO_CHECK:
+            response = await self._handle_portfolio(intent)
+        # 2b. QuickPath: template-based response, no AnalysisLoop.
+        elif intent.intent_type in QUICKPATH_INTENTS:
             response = await self._handle_quickpath(intent)
         # 3. Comparison branch: per-ticker analysis + comparison table.
         elif intent.intent_type == IntentType.COMPARISON and len(intent.tickers) >= 2:
@@ -212,6 +217,38 @@ class ConversationEngine:
 
         self._last_response = response
         return response
+
+    async def _handle_portfolio(self, intent: Intent) -> EngineResponse:
+        """QuickPath: fetch prices for all holdings and show P&L summary."""
+        if not self._portfolio_config.holdings:
+            text = (
+                "No holdings configured.\n"
+                "Add holdings to ~/.qracer/portfolio.toml to use portfolio tracking."
+            )
+            analysis = AnalysisResult(confidence=1.0, iterations=0)
+            self._history.append({"role": "assistant", "content": text})
+            self._log_turn("assistant", text)
+            return EngineResponse(text=text, intent=intent, analysis=analysis)
+
+        # Fetch live prices for all holdings.
+        prices: dict[str, float] = {}
+        for holding in self._portfolio_config.holdings:
+            try:
+                price = await self._data.async_get_with_fallback(
+                    PriceProvider, "get_price", holding.ticker
+                )
+                prices[holding.ticker] = price
+            except Exception:
+                logger.warning("Could not fetch price for %s", holding.ticker)
+
+        calculator = RiskCalculator(self._portfolio_config)
+        snapshot = calculator.build_snapshot(prices)
+        text = format_portfolio(snapshot)
+
+        analysis = AnalysisResult(confidence=1.0, iterations=0)
+        self._history.append({"role": "assistant", "content": text})
+        self._log_turn("assistant", text)
+        return EngineResponse(text=text, intent=intent, analysis=analysis)
 
     async def _handle_quickpath(self, intent: Intent) -> EngineResponse:
         """QuickPath: fetch 1-2 tools, format with template, no LLM."""

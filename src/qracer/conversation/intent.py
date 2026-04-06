@@ -23,6 +23,7 @@ class IntentType(str, Enum):
     # QuickPath intents (< 5s, 0-1 LLM calls)
     PRICE_CHECK = "price_check"
     QUICK_NEWS = "quick_news"
+    PORTFOLIO_CHECK = "portfolio_check"
     # DeepPath intents (30-120s, 3-7 LLM calls)
     EVENT_ANALYSIS = "event_analysis"
     DEEP_DIVE = "deep_dive"
@@ -34,12 +35,15 @@ class IntentType(str, Enum):
 
 
 # Intents that use the QuickPath (no AnalysisLoop).
-QUICKPATH_INTENTS = frozenset({IntentType.PRICE_CHECK, IntentType.QUICK_NEWS})
+QUICKPATH_INTENTS = frozenset(
+    {IntentType.PRICE_CHECK, IntentType.QUICK_NEWS, IntentType.PORTFOLIO_CHECK}
+)
 
 # Which pipeline tools each intent invokes by default.
 INTENT_TOOL_MAP: dict[IntentType, list[str]] = {
     IntentType.PRICE_CHECK: ["price_event"],
     IntentType.QUICK_NEWS: ["news"],
+    IntentType.PORTFOLIO_CHECK: [],  # handled directly by engine, no pipeline tools
     IntentType.EVENT_ANALYSIS: ["price_event", "news", "insider", "cross_market"],
     IntentType.DEEP_DIVE: [
         "price_event",
@@ -74,13 +78,14 @@ class Intent:
 _SYSTEM_PROMPT = """\
 You are a query classifier for a financial analysis system.
 Given a user query, return a JSON object with:
-- "intent": one of price_check, quick_news, event_analysis, deep_dive, \
-alpha_hunt, macro_query, cross_market, follow_up, comparison
+- "intent": one of price_check, quick_news, portfolio_check, event_analysis, \
+deep_dive, alpha_hunt, macro_query, cross_market, follow_up, comparison
 - "tickers": list of stock tickers mentioned (uppercase, empty list if none)
 
 Rules:
 - "What's AAPL at?", "Price of X", "How's X doing?" → price_check
 - "Any news on X?", "News for X" → quick_news
+- "How's my portfolio?", "Check my holdings", "Portfolio P&L" → portfolio_check
 - "Why did X move/spike/drop" → event_analysis
 - "Full analysis on X" or "Tell me about X" → deep_dive
 - "Where's alpha" or "hidden opportunities" → alpha_hunt
@@ -136,6 +141,10 @@ class IntentParser:
 
         # Extract uppercase tickers (simple heuristic: 1-5 letter uppercase words).
         tickers = _extract_tickers(query)
+
+        # QuickPath: portfolio check (no ticker needed).
+        if any(w in q for w in ("portfolio", "my holdings", "my stocks", "p&l", "pnl", "holdings")):
+            return Intent(IntentType.PORTFOLIO_CHECK, tickers=tickers, raw_query=query)
 
         # QuickPath: simple price check (single ticker, short query).
         if tickers and any(
