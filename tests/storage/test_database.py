@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from tracer.storage.database import TracerDB
+from qracer.storage.database import TracerDB
 
 
 class TestTracerDB:

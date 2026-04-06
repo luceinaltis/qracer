@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from helpers import make_turn as _turn
 
-from tracer.conversation.context import (
+from qracer.conversation.context import (
     ConversationContext,
     extract_context,
     is_stale,

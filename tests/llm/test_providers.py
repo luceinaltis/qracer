@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tracer.llm.providers import (
+from qracer.llm.providers import (
     CompletionRequest,
     CompletionResponse,
     LLMProvider,

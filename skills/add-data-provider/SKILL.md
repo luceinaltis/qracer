@@ -2,18 +2,18 @@
 name: add-data-provider
 description: >
   Guide for implementing a new data provider. Use when adding a new market data
-  source (e.g., new API, new data type) to the Tracer system. Ensures the provider
+  source (e.g., new API, new data type) to the qracer system. Ensures the provider
   follows the abstraction interface and integrates cleanly.
 ---
 
 # Add Data Provider
 
-Step-by-step guide for adding a new data source to Tracer.
+Step-by-step guide for adding a new data source to qracer.
 
 ## Before You Start
 
 - Read `docs/architecture.md` for provider abstraction design.
-- Read `src/tracer/data/base.py` for existing interfaces (once implemented).
+- Read `src/qracer/data/base.py` for existing interfaces (once implemented).
 - Identify which interface(s) the new provider implements:
   - `PriceProvider` - stock price, OHLCV, historical
   - `FundamentalProvider` - financial statements, valuation metrics
@@ -29,7 +29,7 @@ Step-by-step guide for adding a new data source to Tracer.
    - Document rate limits in `docs/architecture.md` rate limits table.
 
 2. **Create provider file**
-   - Path: `src/tracer/data/{provider_name}.py`
+   - Path: `src/qracer/data/{provider_name}.py`
    - Implement the relevant interface(s) from `base.py`
    - All API calls must be `async`
    - Handle rate limiting: implement backoff/retry
@@ -52,8 +52,8 @@ Step-by-step guide for adding a new data source to Tracer.
 ## Implementation Template
 
 ```python
-from tracer.data.base import PriceProvider  # or relevant interface
-from tracer.models import OHLCV  # or relevant model
+from qracer.data.base import PriceProvider  # or relevant interface
+from qracer.models import OHLCV  # or relevant model
 
 
 class MyNewProvider(PriceProvider):
@@ -77,5 +77,5 @@ class MyNewProvider(PriceProvider):
 - [ ] Rate limiting handled
 - [ ] Error handling with typed exceptions
 - [ ] Tests pass: `pytest tests/data/test_{provider_name}.py`
-- [ ] Type check passes: `pyright src/tracer/data/{provider_name}.py`
+- [ ] Type check passes: `pyright src/qracer/data/{provider_name}.py`
 - [ ] `docs/architecture.md` updated

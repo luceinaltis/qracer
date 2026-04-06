@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from tracer.conversation.context import ConversationContext
-from tracer.conversation.topic_resolver import TopicSource, resolve_unknown_topic
-from tracer.memory.memory_searcher import MemorySearcher
+from qracer.conversation.context import ConversationContext
+from qracer.conversation.topic_resolver import TopicSource, resolve_unknown_topic
+from qracer.memory.memory_searcher import MemorySearcher
 
 
 def _ctx(topics: list[str] | None = None) -> ConversationContext:

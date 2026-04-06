@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from tracer.llm import LLMRegistry
-from tracer.llm.providers import CompletionRequest, CompletionResponse, Role
+from qracer.llm import LLMRegistry
+from qracer.llm.providers import CompletionRequest, CompletionResponse, Role
 
 
 class FakeLLMProvider:

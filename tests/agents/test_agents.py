@@ -8,11 +8,11 @@ import pytest
 from helpers import make_data_registry as _make_data
 from helpers import make_llm_registry as _make_llm
 
-from tracer.agents import Analyst, BaseAgent, Reporter, Researcher, Strategist
-from tracer.data.registry import DataRegistry
-from tracer.llm.providers import CompletionRequest, CompletionResponse, Role
-from tracer.llm.registry import LLMRegistry
-from tracer.models import Signal, SignalDirection
+from qracer.agents import Analyst, BaseAgent, Reporter, Researcher, Strategist
+from qracer.data.registry import DataRegistry
+from qracer.llm.providers import CompletionRequest, CompletionResponse, Role
+from qracer.llm.registry import LLMRegistry
+from qracer.models import Signal, SignalDirection
 
 # ---------------------------------------------------------------------------
 # BaseAgent
@@ -26,7 +26,7 @@ class TestBaseAgent:
             BaseAgent(LLMRegistry(), DataRegistry())  # type: ignore[abstract]
 
     def test_successful_results_filters(self) -> None:
-        from tracer.models import ToolResult
+        from qracer.models import ToolResult
 
         results = [
             ToolResult(tool="a", success=True, data={"x": 1}, source="s"),
@@ -38,7 +38,7 @@ class TestBaseAgent:
         assert all(r.success for r in filtered)
 
     def test_format_tool_data(self) -> None:
-        from tracer.models import ToolResult
+        from qracer.models import ToolResult
 
         results = [
             ToolResult(tool="price", success=True, data={"ticker": "AAPL"}, source="P"),

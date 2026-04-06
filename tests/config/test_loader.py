@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from tracer.config.loader import (
+from qracer.config.loader import (
     _load_credentials,
     _load_merged_toml,
     _merge_dicts,
     load_config,
     resolve_config_dirs,
 )
-from tracer.config.models import QracerConfig
+from qracer.config.models import QracerConfig
 
 
 @pytest.fixture()
@@ -51,15 +51,15 @@ class TestResolveConfigDirs:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.delenv("QRACER_CONFIG_DIR", raising=False)
-        monkeypatch.setattr("tracer.config.loader._project_dir", lambda: project_qracer)
-        monkeypatch.setattr("tracer.config.loader._user_dir", lambda: user_qracer)
+        monkeypatch.setattr("qracer.config.loader._project_dir", lambda: project_qracer)
+        monkeypatch.setattr("qracer.config.loader._user_dir", lambda: user_qracer)
         dirs = resolve_config_dirs()
         assert dirs == [project_qracer, user_qracer]
 
     def test_missing_dirs_excluded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("QRACER_CONFIG_DIR", raising=False)
-        monkeypatch.setattr("tracer.config.loader._project_dir", lambda: tmp_path / "nope")
-        monkeypatch.setattr("tracer.config.loader._user_dir", lambda: tmp_path / "also_nope")
+        monkeypatch.setattr("qracer.config.loader._project_dir", lambda: tmp_path / "nope")
+        monkeypatch.setattr("qracer.config.loader._user_dir", lambda: tmp_path / "also_nope")
         assert resolve_config_dirs() == []
 
 
@@ -109,7 +109,7 @@ class TestCredentials:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         (user_qracer / "credentials.env").write_text("ALPHA_VANTAGE_KEY=abc123\n")
-        monkeypatch.setattr("tracer.config.loader._user_dir", lambda: user_qracer)
+        monkeypatch.setattr("qracer.config.loader._user_dir", lambda: user_qracer)
 
         creds = _load_credentials()
         assert creds == {"ALPHA_VANTAGE_KEY": "abc123"}
@@ -119,7 +119,7 @@ class TestCredentials:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr("tracer.config.loader._user_dir", lambda: tmp_path / "nope")
+        monkeypatch.setattr("qracer.config.loader._user_dir", lambda: tmp_path / "nope")
         assert _load_credentials() == {}
 
 
@@ -128,23 +128,23 @@ class TestCredentials:
 
 class TestLoadConfig:
     def test_defaults_when_no_dirs(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("tracer.config.loader.resolve_config_dirs", lambda: [])
-        monkeypatch.setattr("tracer.config.loader._load_credentials", lambda: {})
+        monkeypatch.setattr("qracer.config.loader.resolve_config_dirs", lambda: [])
+        monkeypatch.setattr("qracer.config.loader._load_credentials", lambda: {})
         cfg = load_config(force_reload=True)
         assert isinstance(cfg, QracerConfig)
         assert cfg.app.default_mode == "quick"
         assert cfg.portfolio.limits.max_single_position_pct == 15.0
 
     def test_lazy_caching(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("tracer.config.loader.resolve_config_dirs", lambda: [])
-        monkeypatch.setattr("tracer.config.loader._load_credentials", lambda: {})
+        monkeypatch.setattr("qracer.config.loader.resolve_config_dirs", lambda: [])
+        monkeypatch.setattr("qracer.config.loader._load_credentials", lambda: {})
         cfg1 = load_config(force_reload=True)
         cfg2 = load_config()
         assert cfg1 is cfg2
 
     def test_force_reload(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("tracer.config.loader.resolve_config_dirs", lambda: [])
-        monkeypatch.setattr("tracer.config.loader._load_credentials", lambda: {})
+        monkeypatch.setattr("qracer.config.loader.resolve_config_dirs", lambda: [])
+        monkeypatch.setattr("qracer.config.loader._load_credentials", lambda: {})
         cfg1 = load_config(force_reload=True)
         cfg2 = load_config(force_reload=True)
         assert cfg1 is not cfg2
@@ -168,8 +168,8 @@ class TestLoadConfig:
         # Project-level override
         (project_qracer / "config.toml").write_text('default_mode = "quick"\n')
 
-        monkeypatch.setattr("tracer.config.loader._project_dir", lambda: project_qracer)
-        monkeypatch.setattr("tracer.config.loader._user_dir", lambda: user_qracer)
+        monkeypatch.setattr("qracer.config.loader._project_dir", lambda: project_qracer)
+        monkeypatch.setattr("qracer.config.loader._user_dir", lambda: user_qracer)
         monkeypatch.delenv("QRACER_CONFIG_DIR", raising=False)
 
         cfg = load_config(force_reload=True)

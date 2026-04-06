@@ -9,8 +9,8 @@ from helpers import failed_result as _failed_result
 from helpers import make_mock_llm_registry as _mock_llm_registry
 from helpers import ok_result as _ok_result
 
-from tracer.config.models import Holding, PortfolioConfig
-from tracer.conversation.engine import (
+from qracer.config.models import Holding, PortfolioConfig
+from qracer.conversation.engine import (
     AnalysisLoop,
     AnalysisResult,
     ComparisonSynthesizer,
@@ -20,10 +20,10 @@ from tracer.conversation.engine import (
     _invoke_tool,
     _invoke_tools,
 )
-from tracer.conversation.intent import Intent, IntentType
-from tracer.data.registry import DataRegistry
-from tracer.llm.providers import Role
-from tracer.llm.registry import LLMRegistry
+from qracer.conversation.intent import Intent, IntentType
+from qracer.data.registry import DataRegistry
+from qracer.llm.providers import Role
+from qracer.llm.registry import LLMRegistry
 
 # ---------------------------------------------------------------------------
 # _invoke_tool / _invoke_tools
@@ -34,7 +34,7 @@ class TestInvokeTool:
     async def test_price_event_with_ticker(self) -> None:
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
         registry = DataRegistry()
-        with patch("tracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
             mock_pipeline.price_event = AsyncMock(return_value=_ok_result("price_event"))
             result = await _invoke_tool("price_event", intent, registry)
             assert result.success
@@ -43,7 +43,7 @@ class TestInvokeTool:
     async def test_news_with_ticker(self) -> None:
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["TSLA"], raw_query="test")
         registry = DataRegistry()
-        with patch("tracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
             mock_pipeline.news = AsyncMock(return_value=_ok_result("news"))
             result = await _invoke_tool("news", intent, registry)
             assert result.success
@@ -51,7 +51,7 @@ class TestInvokeTool:
     async def test_cross_market_passes_all_tickers(self) -> None:
         intent = Intent(IntentType.CROSS_MARKET, tickers=["AAPL", "TSLA"], raw_query="test")
         registry = DataRegistry()
-        with patch("tracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
             mock_pipeline.cross_market = AsyncMock(return_value=_ok_result("cross_market"))
             await _invoke_tool("cross_market", intent, registry)
             mock_pipeline.cross_market.assert_called_once_with(["AAPL", "TSLA"], registry)
@@ -59,7 +59,7 @@ class TestInvokeTool:
     async def test_macro_uses_raw_query(self) -> None:
         intent = Intent(IntentType.MACRO_QUERY, raw_query="inflation rate")
         registry = DataRegistry()
-        with patch("tracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
             mock_pipeline.macro = AsyncMock(return_value=_ok_result("macro"))
             await _invoke_tool("macro", intent, registry)
             mock_pipeline.macro.assert_called_once_with("inflation rate", registry)
@@ -67,7 +67,7 @@ class TestInvokeTool:
     async def test_memory_search(self) -> None:
         intent = Intent(IntentType.FOLLOW_UP, raw_query="what about before?")
         registry = DataRegistry()
-        with patch("tracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
             mock_pipeline.memory_search = AsyncMock(return_value=_ok_result("memory_search"))
             await _invoke_tool("memory_search", intent, registry)
             mock_pipeline.memory_search.assert_called_once_with("what about before?")
@@ -82,7 +82,7 @@ class TestInvokeTool:
     async def test_invoke_tools_concurrent(self) -> None:
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
         registry = DataRegistry()
-        with patch("tracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
             mock_pipeline.price_event = AsyncMock(return_value=_ok_result("price_event"))
             mock_pipeline.news = AsyncMock(return_value=_ok_result("news"))
             results = await _invoke_tools(["price_event", "news"], intent, registry)
@@ -127,7 +127,7 @@ class TestAnalysisLoop:
         loop = AnalysisLoop(llm, data)
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
 
-        with patch("tracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("news")]
             result = await loop.run(intent, [_ok_result("price_event")])
 
@@ -144,7 +144,7 @@ class TestAnalysisLoop:
         loop = AnalysisLoop(llm, data, max_iterations=2)
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
 
-        with patch("tracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("news")]
             result = await loop.run(intent, [_ok_result("price_event")])
 
@@ -271,7 +271,7 @@ class TestConversationEngine:
 
         engine = ConversationEngine(llm, data)
 
-        with patch("tracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("price_event"), _ok_result("news")]
             response = await engine.query("Why did AAPL spike 5% today?")
 
@@ -296,7 +296,7 @@ class TestConversationEngine:
 
         engine = ConversationEngine(llm, DataRegistry())
 
-        with patch("tracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("macro")]
             await engine.query("Where are we in the rate cycle?")
 
@@ -335,8 +335,8 @@ class TestConversationEngine:
         engine = ConversationEngine(llm, DataRegistry(), portfolio_config=portfolio)
 
         with (
-            patch("tracer.conversation.engine._invoke_tools") as mock_invoke,
-            patch("tracer.conversation.engine.pipeline.risk_check") as mock_risk,
+            patch("qracer.conversation.engine._invoke_tools") as mock_invoke,
+            patch("qracer.conversation.engine.pipeline.risk_check") as mock_risk,
         ):
             mock_invoke.return_value = [_ok_result("price_event")]
             mock_risk.return_value = _ok_result(
@@ -383,8 +383,8 @@ class TestConversationEngine:
         engine = ConversationEngine(llm, DataRegistry())
 
         with (
-            patch("tracer.conversation.engine._invoke_tools") as mock_invoke,
-            patch("tracer.conversation.engine.pipeline.risk_check") as mock_risk,
+            patch("qracer.conversation.engine._invoke_tools") as mock_invoke,
+            patch("qracer.conversation.engine.pipeline.risk_check") as mock_risk,
         ):
             mock_invoke.return_value = [_ok_result("price_event")]
             await engine.query("Analyze AAPL")
@@ -412,8 +412,8 @@ class TestConversationEngine:
         engine = ConversationEngine(llm, DataRegistry(), portfolio_config=portfolio)
 
         with (
-            patch("tracer.conversation.engine._invoke_tools") as mock_invoke,
-            patch("tracer.conversation.engine.pipeline.risk_check") as mock_risk,
+            patch("qracer.conversation.engine._invoke_tools") as mock_invoke,
+            patch("qracer.conversation.engine.pipeline.risk_check") as mock_risk,
         ):
             mock_invoke.return_value = [_ok_result("price_event")]
             await engine.query("Analyze AAPL")
@@ -435,7 +435,7 @@ class TestConversationEngine:
             confidence_threshold=0.9,
         )
 
-        with patch("tracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
             mock_invoke.return_value = []
             response = await engine.query("test")
 
@@ -514,7 +514,7 @@ class TestConversationEngineComparison:
         llm = _mock_llm_registry({Role.RESEARCHER: intent_resp, Role.STRATEGIST: comparison_resp})
         engine = ConversationEngine(llm, DataRegistry())
 
-        with patch("tracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("price_event"), _ok_result("fundamentals")]
             response = await engine.query("Compare AAPL and MSFT")
 
@@ -537,7 +537,7 @@ class TestConversationEngineComparison:
         )
         engine = ConversationEngine(llm, DataRegistry())
 
-        with patch("tracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("price_event")]
             response = await engine.query("Compare AAPL")
 

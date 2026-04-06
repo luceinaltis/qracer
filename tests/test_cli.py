@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tracer.cli import _build_registries
+from qracer.cli import _build_registries
 
 
 class TestBuildRegistries:

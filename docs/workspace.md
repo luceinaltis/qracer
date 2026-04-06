@@ -1,12 +1,12 @@
 # Workspace
 
-The tracer workspace is a single directory containing all project files.
+The qracer workspace is a single directory containing all project files.
 
 ## Structure
 
 ```text
 tracer/
-├── src/tracer/       # Source code
+├── src/qracer/       # Source code
 ├── tests/            # Test suite
 ├── docs/             # Design documentation
 ├── skills/           # Agent skill definitions
