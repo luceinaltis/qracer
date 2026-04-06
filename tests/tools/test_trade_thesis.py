@@ -6,44 +6,12 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+from helpers import make_single_role_registry, sample_analysis_results
 
-from tracer.llm.providers import CompletionResponse, Role
+from tracer.llm.providers import Role
 from tracer.llm.registry import LLMRegistry
-from tracer.models import ToolResult, TradeThesis
+from tracer.models import TradeThesis
 from tracer.tools.pipeline import trade_thesis
-
-
-def _llm_registry(response_content: str) -> LLMRegistry:
-    """Build an LLMRegistry with a mock strategist returning the given content."""
-    mock_provider = AsyncMock()
-    mock_provider.complete.return_value = CompletionResponse(
-        content=response_content,
-        model="mock",
-        input_tokens=0,
-        output_tokens=0,
-        cost=0.0,
-    )
-    registry = LLMRegistry()
-    registry.register("mock", mock_provider, [Role.STRATEGIST])
-    return registry
-
-
-def _sample_analysis_results() -> list[ToolResult]:
-    return [
-        ToolResult(
-            tool="price_event",
-            success=True,
-            data={"ticker": "AAPL", "current_price": 185.0},
-            source="PriceProvider",
-        ),
-        ToolResult(
-            tool="fundamentals",
-            success=True,
-            data={"ticker": "AAPL", "pe_ratio": 28.5},
-            source="FundamentalProvider",
-        ),
-    ]
-
 
 _VALID_LLM_RESPONSE = json.dumps(
     {
@@ -60,8 +28,8 @@ _VALID_LLM_RESPONSE = json.dumps(
 
 class TestTradeThesis:
     async def test_success(self) -> None:
-        registry = _llm_registry(_VALID_LLM_RESPONSE)
-        result = await trade_thesis("AAPL", _sample_analysis_results(), registry)
+        registry = make_single_role_registry(Role.STRATEGIST, _VALID_LLM_RESPONSE)
+        result = await trade_thesis("AAPL", sample_analysis_results(), registry)
 
         assert result.success is True
         assert result.tool == "trade_thesis"
@@ -76,8 +44,8 @@ class TestTradeThesis:
         assert isinstance(thesis["summary"], str)
 
     async def test_risk_reward_ratio_computed(self) -> None:
-        registry = _llm_registry(_VALID_LLM_RESPONSE)
-        result = await trade_thesis("AAPL", _sample_analysis_results(), registry)
+        registry = make_single_role_registry(Role.STRATEGIST, _VALID_LLM_RESPONSE)
+        result = await trade_thesis("AAPL", sample_analysis_results(), registry)
 
         assert result.success is True
         thesis = result.data["thesis"]
@@ -98,24 +66,26 @@ class TestTradeThesis:
                 "summary": "test",
             }
         )
-        registry = _llm_registry(bad_response)
-        result = await trade_thesis("AAPL", _sample_analysis_results(), registry)
+        registry = make_single_role_registry(Role.STRATEGIST, bad_response)
+        result = await trade_thesis("AAPL", sample_analysis_results(), registry)
 
         assert result.success is False
         assert result.error is not None
 
     async def test_invalid_json_response(self) -> None:
         """Non-JSON LLM response should return failure."""
-        registry = _llm_registry("This is not JSON at all")
-        result = await trade_thesis("AAPL", _sample_analysis_results(), registry)
+        registry = make_single_role_registry(Role.STRATEGIST, "This is not JSON at all")
+        result = await trade_thesis("AAPL", sample_analysis_results(), registry)
 
         assert result.success is False
         assert "Failed to parse" in (result.error or "")
 
     async def test_missing_keys_in_response(self) -> None:
         """Missing required keys should return failure."""
-        registry = _llm_registry(json.dumps({"entry_zone": [180, 185]}))
-        result = await trade_thesis("AAPL", _sample_analysis_results(), registry)
+        registry = make_single_role_registry(
+            Role.STRATEGIST, json.dumps({"entry_zone": [180, 185]})
+        )
+        result = await trade_thesis("AAPL", sample_analysis_results(), registry)
 
         assert result.success is False
 
@@ -126,7 +96,7 @@ class TestTradeThesis:
         registry = LLMRegistry()
         registry.register("mock", mock_provider, [Role.STRATEGIST])
 
-        result = await trade_thesis("AAPL", _sample_analysis_results(), registry)
+        result = await trade_thesis("AAPL", sample_analysis_results(), registry)
 
         assert result.success is False
         assert result.error is not None
@@ -144,15 +114,15 @@ class TestTradeThesis:
                 "summary": "Moderate outlook.",
             }
         )
-        registry = _llm_registry(response)
-        result = await trade_thesis("AAPL", _sample_analysis_results(), registry)
+        registry = make_single_role_registry(Role.STRATEGIST, response)
+        result = await trade_thesis("AAPL", sample_analysis_results(), registry)
 
         assert result.success is True
         assert result.data["thesis"]["catalyst_date"] is None
 
     async def test_empty_analysis_results(self) -> None:
         """Should work even with no prior analysis results."""
-        registry = _llm_registry(_VALID_LLM_RESPONSE)
+        registry = make_single_role_registry(Role.STRATEGIST, _VALID_LLM_RESPONSE)
         result = await trade_thesis("AAPL", [], registry)
 
         assert result.success is True

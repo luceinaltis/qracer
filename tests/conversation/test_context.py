@@ -4,23 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from helpers import make_turn as _turn
+
 from tracer.conversation.context import (
     ConversationContext,
     extract_context,
     is_stale,
     resolve_pronoun,
 )
-from tracer.memory.session_logger import TurnRecord
-
-
-def _turn(content: str, turn: int = 1, role: str = "user", ts: str | None = None) -> TurnRecord:
-    """Helper to build a TurnRecord."""
-    return TurnRecord(
-        turn=turn,
-        role=role,
-        content=content,
-        ts=ts or datetime.now().isoformat(),
-    )
 
 
 class TestExtractTickerFromTurns:

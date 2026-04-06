@@ -3,106 +3,16 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
 
 import pytest
+from helpers import make_data_registry as _make_data
+from helpers import make_llm_registry as _make_llm
 
 from tracer.agents import Analyst, BaseAgent, Reporter, Researcher, Strategist
-from tracer.data.providers import (
-    OHLCV,
-    FundamentalData,
-    MacroIndicator,
-    NewsArticle,
-)
 from tracer.data.registry import DataRegistry
 from tracer.llm.providers import CompletionRequest, CompletionResponse, Role
 from tracer.llm.registry import LLMRegistry
 from tracer.models import Signal, SignalDirection
-
-# ---------------------------------------------------------------------------
-# Fakes
-# ---------------------------------------------------------------------------
-
-
-class FakeLLM:
-    """Fake LLM provider that returns canned responses."""
-
-    def __init__(self, content: str = "[]") -> None:
-        self.content = content
-        self.calls: list[CompletionRequest] = []
-
-    async def complete(self, request: CompletionRequest) -> CompletionResponse:
-        self.calls.append(request)
-        return CompletionResponse(
-            content=self.content,
-            model="fake",
-            input_tokens=0,
-            output_tokens=0,
-            cost=0.0,
-        )
-
-
-class FakePriceProvider:
-    async def get_price(self, ticker: str) -> float:
-        return 150.0
-
-    async def get_ohlcv(self, ticker: str, start: date, end: date) -> list[OHLCV]:
-        return [OHLCV(date=date(2024, 1, 1), open=100, high=105, low=99, close=102, volume=1000)]
-
-
-class FakeFundamentalProvider:
-    async def get_fundamentals(self, ticker: str) -> FundamentalData:
-        return FundamentalData(
-            ticker=ticker, pe_ratio=20.0, market_cap=1e12, revenue=1e10, earnings=1e9
-        )
-
-
-class FakeMacroProvider:
-    async def get_indicator(self, name: str) -> MacroIndicator:
-        return MacroIndicator(name=name, value=3.5, date=date(2024, 1, 1), source="test", unit="%")
-
-
-class FakeNewsProvider:
-    async def get_news(self, ticker: str, limit: int = 10) -> list[NewsArticle]:
-        return [
-            NewsArticle(
-                title=f"{ticker} surges",
-                source="TestNews",
-                published_at=datetime(2024, 1, 1),
-                url="https://example.com",
-                summary="Stock went up.",
-                sentiment=0.8,
-            )
-        ]
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-def _make_llm(content: str = "[]") -> tuple[LLMRegistry, FakeLLM]:
-    registry = LLMRegistry()
-    fake = FakeLLM(content)
-    registry.register("fake", fake, [Role.RESEARCHER, Role.ANALYST, Role.STRATEGIST, Role.REPORTER])
-    return registry, fake
-
-
-def _make_data() -> DataRegistry:
-    data = DataRegistry()
-    from tracer.data.providers import (
-        FundamentalProvider,
-        MacroProvider,
-        NewsProvider,
-        PriceProvider,
-    )
-
-    data.register("price", FakePriceProvider(), [PriceProvider])
-    data.register("fund", FakeFundamentalProvider(), [FundamentalProvider])
-    data.register("macro", FakeMacroProvider(), [MacroProvider])
-    data.register("news", FakeNewsProvider(), [NewsProvider])
-    return data
-
 
 # ---------------------------------------------------------------------------
 # BaseAgent
