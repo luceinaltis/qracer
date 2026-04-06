@@ -16,7 +16,9 @@ from qracer.llm.providers import (
 )
 
 try:
-    from google import generativeai as genai  # pyright: ignore[reportMissingImports,reportAttributeAccessIssue]
+    from google import (
+        generativeai as genai,  # pyright: ignore[reportMissingImports,reportAttributeAccessIssue]
+    )
 
     _HAS_GENAI = True
 except ImportError:
