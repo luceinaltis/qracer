@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from qracer.conversation.intent import Intent
 from qracer.data.registry import DataRegistry
@@ -21,7 +22,13 @@ TOOL_DISPATCH: dict[str, str] = {
 }
 
 
-async def invoke_tool(tool_name: str, intent: Intent, registry: DataRegistry) -> ToolResult:
+async def invoke_tool(
+    tool_name: str,
+    intent: Intent,
+    registry: DataRegistry,
+    *,
+    memory_searcher: Any = None,
+) -> ToolResult:
     """Invoke a single pipeline tool based on the intent context."""
     tickers = intent.tickers
 
@@ -38,7 +45,7 @@ async def invoke_tool(tool_name: str, intent: Intent, registry: DataRegistry) ->
     if tool_name == "macro":
         return await pipeline.macro(intent.raw_query, registry)
     if tool_name == "memory_search":
-        return await pipeline.memory_search(intent.raw_query)
+        return await pipeline.memory_search(intent.raw_query, searcher=memory_searcher)
 
     return ToolResult(
         tool=tool_name,
@@ -50,10 +57,16 @@ async def invoke_tool(tool_name: str, intent: Intent, registry: DataRegistry) ->
 
 
 async def invoke_tools(
-    tool_names: list[str], intent: Intent, registry: DataRegistry
+    tool_names: list[str],
+    intent: Intent,
+    registry: DataRegistry,
+    *,
+    memory_searcher: Any = None,
 ) -> list[ToolResult]:
     """Invoke multiple pipeline tools concurrently."""
     if not tool_names:
         return []
-    coros = [invoke_tool(name, intent, registry) for name in tool_names]
+    coros = [
+        invoke_tool(name, intent, registry, memory_searcher=memory_searcher) for name in tool_names
+    ]
     return list(await asyncio.gather(*coros))

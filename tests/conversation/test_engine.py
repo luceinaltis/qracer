@@ -64,7 +64,7 @@ class TestInvokeTool:
         with patch("qracer.conversation.dispatcher.pipeline") as mock_pipeline:
             mock_pipeline.memory_search = AsyncMock(return_value=_ok_result("memory_search"))
             await invoke_tool("memory_search", intent, registry)
-            mock_pipeline.memory_search.assert_called_once_with("what about before?")
+            mock_pipeline.memory_search.assert_called_once_with("what about before?", searcher=None)
 
     async def test_tool_without_tickers_returns_failure(self) -> None:
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=[], raw_query="test")
