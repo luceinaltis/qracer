@@ -8,7 +8,9 @@ AnalysisLoop.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from tracer.config.models import PortfolioConfig
 from tracer.data.providers import (
@@ -35,185 +37,173 @@ def _is_stale(fetched_at: datetime, threshold_hours: int = _STALENESS_HOURS) -> 
     return (datetime.now() - fetched_at).total_seconds() > threshold_hours * 3600
 
 
+# ---------------------------------------------------------------------------
+# Shared wrapper — eliminates try/except + ToolResult boilerplate
+# ---------------------------------------------------------------------------
+
+
+async def _run_tool(
+    tool_name: str,
+    source: str,
+    fetch: Callable[[], Awaitable[dict[str, Any]]],
+    *,
+    label: str = "",
+    stale_check: bool = True,
+) -> ToolResult:
+    """Execute *fetch*, wrap the result in a ToolResult.
+
+    *fetch* should be a zero-arg async callable that returns the data dict.
+    On exception the tool returns a failed ToolResult instead of raising.
+    """
+    try:
+        data = await fetch()
+        now = datetime.now()
+        return ToolResult(
+            tool=tool_name,
+            success=True,
+            data=data,
+            source=source,
+            fetched_at=now,
+            is_stale=_is_stale(now) if stale_check else False,
+        )
+    except Exception as exc:
+        logger.warning("%s failed for %s: %s", tool_name, label, exc)
+        return ToolResult(
+            tool=tool_name,
+            success=False,
+            data={},
+            source=source,
+            error=str(exc),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Simple data tools
+# ---------------------------------------------------------------------------
+
+
 async def price_event(ticker: str, registry: DataRegistry) -> ToolResult:
     """Fetch recent price/OHLCV data for a ticker."""
-    try:
+
+    async def _fetch() -> dict[str, Any]:
         end = date.today()
         start = end - timedelta(days=_DEFAULT_LOOKBACK_DAYS)
         bars = await registry.async_get_with_fallback(
             PriceProvider, "get_ohlcv", ticker, start, end
         )
         current_price = await registry.async_get_with_fallback(PriceProvider, "get_price", ticker)
-        now = datetime.now()
-        return ToolResult(
-            tool="price_event",
-            success=True,
-            data={
-                "ticker": ticker,
-                "current_price": current_price,
-                "bars": len(bars),
-                "period_start": start.isoformat(),
-                "period_end": end.isoformat(),
-                "ohlcv": [
-                    {
-                        "date": b.date.isoformat(),
-                        "open": b.open,
-                        "high": b.high,
-                        "low": b.low,
-                        "close": b.close,
-                        "volume": b.volume,
-                    }
-                    for b in bars
-                ],
-            },
-            source="PriceProvider",
-            fetched_at=now,
-            is_stale=_is_stale(now),
-        )
-    except Exception as exc:
-        logger.warning("price_event failed for %s: %s", ticker, exc)
-        return ToolResult(
-            tool="price_event",
-            success=False,
-            data={},
-            source="PriceProvider",
-            error=str(exc),
-        )
+        return {
+            "ticker": ticker,
+            "current_price": current_price,
+            "bars": len(bars),
+            "period_start": start.isoformat(),
+            "period_end": end.isoformat(),
+            "ohlcv": [
+                {
+                    "date": b.date.isoformat(),
+                    "open": b.open,
+                    "high": b.high,
+                    "low": b.low,
+                    "close": b.close,
+                    "volume": b.volume,
+                }
+                for b in bars
+            ],
+        }
+
+    return await _run_tool("price_event", "PriceProvider", _fetch, label=ticker)
 
 
 async def news(ticker: str, registry: DataRegistry, limit: int = 10) -> ToolResult:
     """Fetch recent news articles for a ticker."""
-    try:
+
+    async def _fetch() -> dict[str, Any]:
         articles = await registry.async_get_with_fallback(
             NewsProvider, "get_news", ticker, limit=limit
         )
-        now = datetime.now()
-        return ToolResult(
-            tool="news",
-            success=True,
-            data={
-                "ticker": ticker,
-                "count": len(articles),
-                "articles": [
-                    {
-                        "title": a.title,
-                        "source": a.source,
-                        "published_at": a.published_at.isoformat(),
-                        "url": a.url,
-                        "summary": a.summary,
-                        "sentiment": a.sentiment,
-                    }
-                    for a in articles
-                ],
-            },
-            source="NewsProvider",
-            fetched_at=now,
-            is_stale=_is_stale(now),
-        )
-    except Exception as exc:
-        logger.warning("news failed for %s: %s", ticker, exc)
-        return ToolResult(
-            tool="news", success=False, data={}, source="NewsProvider", error=str(exc)
-        )
+        return {
+            "ticker": ticker,
+            "count": len(articles),
+            "articles": [
+                {
+                    "title": a.title,
+                    "source": a.source,
+                    "published_at": a.published_at.isoformat(),
+                    "url": a.url,
+                    "summary": a.summary,
+                    "sentiment": a.sentiment,
+                }
+                for a in articles
+            ],
+        }
+
+    return await _run_tool("news", "NewsProvider", _fetch, label=ticker)
 
 
 async def insider(ticker: str, registry: DataRegistry) -> ToolResult:
     """Fetch insider trading data for a ticker."""
-    try:
+
+    async def _fetch() -> dict[str, Any]:
         records = await registry.async_get_with_fallback(
             AlternativeProvider, "get_alternative", ticker, record_type="insider_trades"
         )
-        now = datetime.now()
-        return ToolResult(
-            tool="insider",
-            success=True,
-            data={
-                "ticker": ticker,
-                "count": len(records),
-                "records": [
-                    {
-                        "record_type": r.record_type,
-                        "data": r.data,
-                        "source": r.source,
-                        "date": r.date.isoformat(),
-                    }
-                    for r in records
-                ],
-            },
-            source="AlternativeProvider",
-            fetched_at=now,
-            is_stale=_is_stale(now),
-        )
-    except Exception as exc:
-        logger.warning("insider failed for %s: %s", ticker, exc)
-        return ToolResult(
-            tool="insider",
-            success=False,
-            data={},
-            source="AlternativeProvider",
-            error=str(exc),
-        )
+        return {
+            "ticker": ticker,
+            "count": len(records),
+            "records": [
+                {
+                    "record_type": r.record_type,
+                    "data": r.data,
+                    "source": r.source,
+                    "date": r.date.isoformat(),
+                }
+                for r in records
+            ],
+        }
+
+    return await _run_tool("insider", "AlternativeProvider", _fetch, label=ticker)
 
 
 async def macro(indicator: str, registry: DataRegistry) -> ToolResult:
     """Fetch a macroeconomic indicator."""
-    try:
+
+    async def _fetch() -> dict[str, Any]:
         data_point = await registry.async_get_with_fallback(
             MacroProvider, "get_indicator", indicator
         )
-        now = datetime.now()
-        return ToolResult(
-            tool="macro",
-            success=True,
-            data={
-                "name": data_point.name,
-                "value": data_point.value,
-                "date": data_point.date.isoformat(),
-                "source": data_point.source,
-                "unit": data_point.unit,
-            },
-            source="MacroProvider",
-            fetched_at=now,
-            is_stale=_is_stale(now),
-        )
-    except Exception as exc:
-        logger.warning("macro failed for %s: %s", indicator, exc)
-        return ToolResult(
-            tool="macro", success=False, data={}, source="MacroProvider", error=str(exc)
-        )
+        return {
+            "name": data_point.name,
+            "value": data_point.value,
+            "date": data_point.date.isoformat(),
+            "source": data_point.source,
+            "unit": data_point.unit,
+        }
+
+    return await _run_tool("macro", "MacroProvider", _fetch, label=indicator)
 
 
 async def fundamentals(ticker: str, registry: DataRegistry) -> ToolResult:
     """Fetch fundamental financial data for a ticker."""
-    try:
+
+    async def _fetch() -> dict[str, Any]:
         data = await registry.async_get_with_fallback(
             FundamentalProvider, "get_fundamentals", ticker
         )
-        now = datetime.now()
-        return ToolResult(
-            tool="fundamentals",
-            success=True,
-            data={
-                "ticker": data.ticker,
-                "pe_ratio": data.pe_ratio,
-                "market_cap": data.market_cap,
-                "revenue": data.revenue,
-                "earnings": data.earnings,
-                "dividend_yield": data.dividend_yield,
-            },
-            source="FundamentalProvider",
-            fetched_at=now,
-            is_stale=_is_stale(now),
-        )
-    except Exception as exc:
-        logger.warning("fundamentals failed for %s: %s", ticker, exc)
-        return ToolResult(
-            tool="fundamentals",
-            success=False,
-            data={},
-            source="FundamentalProvider",
-            error=str(exc),
-        )
+        return {
+            "ticker": data.ticker,
+            "pe_ratio": data.pe_ratio,
+            "market_cap": data.market_cap,
+            "revenue": data.revenue,
+            "earnings": data.earnings,
+            "dividend_yield": data.dividend_yield,
+        }
+
+    return await _run_tool("fundamentals", "FundamentalProvider", _fetch, label=ticker)
+
+
+# ---------------------------------------------------------------------------
+# Composite tools (custom logic, not suited for _run_tool)
+# ---------------------------------------------------------------------------
 
 
 async def cross_market(tickers: list[str], registry: DataRegistry) -> ToolResult:
