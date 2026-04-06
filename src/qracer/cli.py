@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -44,25 +45,39 @@ def main(ctx: click.Context) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _collect_credential_prompts() -> list[tuple[str, str]]:
-    """Collect credential prompts from providers.toml (api_key_env fields).
+_LLM_DISPLAY_NAMES: dict[str, str] = {
+    "claude": "Claude (Anthropic)",
+    "openai": "OpenAI (GPT-4o)",
+    "gemini": "Gemini (Google)",
+}
 
-    Reads the schema defaults and any existing user config to discover
-    which providers declare an ``api_key_env``.  Returns a list of
-    ``(ENV_VAR_NAME, human label)`` pairs.
-    """
+
+def _collect_llm_choices() -> list[tuple[str, str, str | None]]:
+    """Return ``[(name, display_label, api_key_env), ...]`` for LLM providers."""
     schema_data = _load_toml(SCHEMA_DIR / "providers.toml")
-    user_data = _load_toml(_user_dir() / "providers.toml")
-    merged = {
-        **schema_data.get("providers", {}),
-        **user_data.get("providers", {}),
-    }
-    result: list[tuple[str, str]] = []
-    for name, cfg in merged.items():
-        env_key = cfg.get("api_key_env")
-        if env_key:
-            result.append((env_key, f"{name} — {env_key}"))
+    result: list[tuple[str, str, str | None]] = []
+    for name, cfg in schema_data.get("providers", {}).items():
+        if cfg.get("kind") == "llm":
+            label = _LLM_DISPLAY_NAMES.get(name) or name.capitalize()
+            env: str | None = cfg.get("api_key_env")
+            result.append((name, label, env))
     return result
+
+
+def _update_provider_selection(
+    providers_path: Path,
+    chosen: str,
+    all_llm: list[tuple[str, str, str | None]],
+) -> None:
+    """Enable the chosen LLM provider and disable others in providers.toml."""
+    if not providers_path.exists():
+        return
+    text = providers_path.read_text(encoding="utf-8")
+    for name, _, _ in all_llm:
+        enable = "true" if name == chosen else "false"
+        pattern = rf"(\[providers\.{re.escape(name)}\][^\[]*?)enabled\s*=\s*(true|false)"
+        text = re.sub(pattern, rf"\1enabled = {enable}", text)
+    providers_path.write_text(text, encoding="utf-8")
 
 
 @main.command()
@@ -84,24 +99,34 @@ def install() -> None:
             shutil.copy2(src, dest)
             click.echo(f"  Created {name}")
 
-    # 3. Prompt for credentials
-    click.echo()
-    creds: dict[str, str] = {}
-    for env_key, label in _collect_credential_prompts():
-        value = click.prompt(f"  {label}", default="", show_default=False).strip()
-        if value:
-            creds[env_key] = value
+    # 3. LLM provider selection
+    llm_choices = _collect_llm_choices()
+    click.echo("\n  Select LLM provider:")
+    for i, (_, label, _) in enumerate(llm_choices, 1):
+        click.echo(f"    {i}. {label}")
 
-    # 4. Prompt for portfolio currency
+    choice_idx = click.prompt("  Choice", type=click.IntRange(1, len(llm_choices)), default=1)
+    chosen_name, chosen_label, chosen_env = llm_choices[choice_idx - 1]
+
+    # 4. Prompt for the chosen provider's API key only
+    creds: dict[str, str] = {}
+    if chosen_env:
+        value = click.prompt(f"\n  {chosen_env}", default="", show_default=False).strip()
+        if value:
+            creds[chosen_env] = value
+
+    # 5. Prompt for portfolio currency
     currency = click.prompt("\n  Portfolio currency", default="USD").strip()
 
-    # 5. Write credentials.env
+    # 6. Write credentials.env
     creds_path = home_dir / "credentials.env"
     lines = [f"{k}={v}" for k, v in creds.items()]
     creds_path.write_text("\n".join(lines) + "\n" if lines else "")
-    click.echo(f"\n  Written {creds_path}")
 
-    # 6. Update portfolio currency if non-default
+    # 7. Enable chosen LLM provider in providers.toml
+    _update_provider_selection(home_dir / "providers.toml", chosen_name, llm_choices)
+
+    # 8. Update portfolio currency if non-default
     if currency != "USD":
         portfolio_path = home_dir / "portfolio.toml"
         if portfolio_path.exists():
@@ -109,18 +134,14 @@ def install() -> None:
             text = text.replace('currency = "USD"', f'currency = "{currency}"')
             portfolio_path.write_text(text, encoding="utf-8")
 
-    click.echo("\n✓ Setup complete!")
+    click.echo(f"\n✓ Setup complete! {chosen_label} enabled as LLM provider.")
 
-    # Warn about missing LLM credentials
-    if not creds.get("ANTHROPIC_API_KEY") and not os.environ.get("ANTHROPIC_API_KEY"):
-        click.echo(
-            "\n⚠ ANTHROPIC_API_KEY not set — LLM features will not work."
-            "\n  Set it via 'export ANTHROPIC_API_KEY=your-key' or re-run 'qracer install'."
-        )
+    # Warn if API key was not provided
+    if chosen_env and not creds.get(chosen_env) and not os.environ.get(chosen_env):
+        click.echo(f"\n⚠ {chosen_env} not set — set it before running 'qracer repl'.")
 
     click.echo("\nNext steps:")
     click.echo("  qracer status   — check configuration")
-    click.echo("  qracer config   — view merged config")
     click.echo("  qracer repl     — start interactive session")
 
 
