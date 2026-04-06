@@ -55,8 +55,9 @@ def get_sector(ticker: str) -> str:
 class RiskCalculator:
     """Builds portfolio snapshots and performs risk calculations."""
 
-    def __init__(self, config: PortfolioConfig) -> None:
+    def __init__(self, config: PortfolioConfig, *, peak_value: float = 0.0) -> None:
         self._config = config
+        self._peak_value = peak_value
 
     def build_snapshot(self, prices: dict[str, float]) -> PortfolioSnapshot:
         """Build a portfolio snapshot from current prices.
@@ -208,18 +209,50 @@ class RiskCalculator:
                 total += h.weight_pct
         return total
 
+    def update_peak(self, current_value: float) -> float:
+        """Update and return the peak portfolio value.
+
+        Call this each time a new snapshot is built.  The peak is tracked
+        in-memory on the calculator instance.
+        """
+        if current_value > self._peak_value:
+            self._peak_value = current_value
+        return self._peak_value
+
+    @property
+    def peak_value(self) -> float:
+        """Current recorded peak value."""
+        return self._peak_value
+
+    def compute_drawdown(self, current_value: float) -> float:
+        """Compute current drawdown as a percentage.
+
+        Returns 0.0 when peak is zero or current value exceeds peak.
+        """
+        if self._peak_value <= 0 or current_value >= self._peak_value:
+            return 0.0
+        return (self._peak_value - current_value) / self._peak_value * 100.0
+
     def assess(self, prices: dict[str, float]) -> RiskAssessment:
         """Run a full risk assessment.
 
-        Convenience method that builds snapshot, exposure, and checks limits.
+        Convenience method that builds snapshot, exposure, checks limits,
+        and evaluates drawdown.
         """
         snapshot = self.build_snapshot(prices)
         exposure = self.build_exposure(snapshot)
         breached = self.check_limits(snapshot, exposure)
 
+        self.update_peak(snapshot.total_value)
+        drawdown_pct = self.compute_drawdown(snapshot.total_value)
+        alert_threshold = self._config.limits.max_drawdown_alert_pct
+        drawdown_alert = drawdown_pct > alert_threshold
+
         return RiskAssessment(
             snapshot=snapshot,
             exposure=exposure,
             limits_breached=breached,
-            max_drawdown_alert=False,  # TODO: implement drawdown tracking
+            max_drawdown_alert=drawdown_alert,
+            current_drawdown_pct=round(drawdown_pct, 2),
+            peak_value=round(self._peak_value, 2),
         )

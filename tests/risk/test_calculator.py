@@ -308,3 +308,66 @@ class TestGetSector:
 
     def test_case_insensitive(self) -> None:
         assert get_sector("aapl") == "Technology"
+
+
+# ---------------------------------------------------------------------------
+# Drawdown tracking
+# ---------------------------------------------------------------------------
+
+
+class TestDrawdownTracking:
+    def test_update_peak(self, calculator: RiskCalculator) -> None:
+        assert calculator.peak_value == 0.0
+        calculator.update_peak(100_000.0)
+        assert calculator.peak_value == 100_000.0
+        calculator.update_peak(90_000.0)  # lower — should not change
+        assert calculator.peak_value == 100_000.0
+        calculator.update_peak(110_000.0)  # new high
+        assert calculator.peak_value == 110_000.0
+
+    def test_compute_drawdown_at_peak(self, calculator: RiskCalculator) -> None:
+        calculator.update_peak(100_000.0)
+        assert calculator.compute_drawdown(100_000.0) == 0.0
+
+    def test_compute_drawdown_below_peak(self, calculator: RiskCalculator) -> None:
+        calculator.update_peak(100_000.0)
+        dd = calculator.compute_drawdown(90_000.0)
+        assert dd == pytest.approx(10.0)
+
+    def test_compute_drawdown_above_peak(self, calculator: RiskCalculator) -> None:
+        calculator.update_peak(100_000.0)
+        assert calculator.compute_drawdown(110_000.0) == 0.0
+
+    def test_compute_drawdown_zero_peak(self, calculator: RiskCalculator) -> None:
+        assert calculator.compute_drawdown(50_000.0) == 0.0
+
+    def test_assess_drawdown_no_alert(self, portfolio_config: PortfolioConfig) -> None:
+        """Drawdown under threshold should not trigger alert."""
+        # AAPL=100*180=18000, MSFT=50*350=17500, JPM=200*160=32000 → total=67500
+        calc = RiskCalculator(portfolio_config, peak_value=70_000.0)
+        prices = {"AAPL": 180.0, "MSFT": 350.0, "JPM": 160.0}
+        result = calc.assess(prices)
+        # Drawdown is (70000 - 67500) / 70000 ≈ 3.6% < 10% threshold
+        assert result.max_drawdown_alert is False
+        assert result.current_drawdown_pct < 10.0
+        assert result.peak_value == 70_000.0
+
+    def test_assess_drawdown_triggers_alert(self, portfolio_config: PortfolioConfig) -> None:
+        """Drawdown exceeding threshold should trigger alert."""
+        # total ≈ 67500, peak=100000 → drawdown ≈ 32.5% > 10%
+        calc = RiskCalculator(portfolio_config, peak_value=100_000.0)
+        prices = {"AAPL": 180.0, "MSFT": 350.0, "JPM": 160.0}
+        result = calc.assess(prices)
+        assert result.max_drawdown_alert is True
+        assert result.current_drawdown_pct > 10.0
+        assert result.peak_value == 100_000.0
+
+    def test_assess_updates_peak_on_new_high(self, portfolio_config: PortfolioConfig) -> None:
+        """If current value exceeds peak, peak should update."""
+        # total ≈ 67500, peak=50000 → new high
+        calc = RiskCalculator(portfolio_config, peak_value=50_000.0)
+        prices = {"AAPL": 180.0, "MSFT": 350.0, "JPM": 160.0}
+        result = calc.assess(prices)
+        assert result.peak_value == result.snapshot.total_value
+        assert result.current_drawdown_pct == 0.0
+        assert result.max_drawdown_alert is False
