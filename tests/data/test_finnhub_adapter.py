@@ -43,7 +43,9 @@ class TestFinnhubAdapterInit:
         adapter = mod.FinnhubAdapter(api_key="test-key-123")
         assert adapter._client is not None
 
-    def test_missing_finnhub_package_raises_import_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_finnhub_package_raises_import_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(mod, "_HAS_FINNHUB", False)
         with pytest.raises(ImportError, match="finnhub-python is not installed"):
             mod.FinnhubAdapter(api_key="some-key")
