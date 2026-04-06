@@ -364,10 +364,11 @@ async def risk_check(
     Builds a portfolio snapshot from current prices, sizes the proposed
     position using conviction from the thesis, and checks portfolio limits.
     """
-    from qracer.risk.calculator import RiskCalculator
+    from qracer.risk.calculator import RiskCalculator, SectorResolver
 
     try:
-        calculator = RiskCalculator(config)
+        sector_resolver = SectorResolver(data_registry=registry)
+        calculator = RiskCalculator(config, sector_resolver=sector_resolver)
 
         # Gather current prices for all holdings.
         prices: dict[str, float] = {}
@@ -380,7 +381,7 @@ async def risk_check(
                 logger.warning("Could not fetch price for %s: %s", holding.ticker, exc)
 
         snapshot = calculator.build_snapshot(prices)
-        exposure = calculator.build_exposure(snapshot)
+        exposure = await calculator.build_exposure_async(snapshot)
 
         # Size the proposed position.
         allocation_pct = calculator.size_position(ticker, thesis.conviction, snapshot)

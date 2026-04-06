@@ -31,7 +31,7 @@ from qracer.conversation.quickpath import format_portfolio, format_quickpath
 from qracer.conversation.report_exporter import ReportExporter
 from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynthesizer
 from qracer.data.providers import PriceProvider
-from qracer.data.registry import DataRegistry, build_registry
+from qracer.data.registry import DataRegistry
 from qracer.llm.registry import LLMRegistry
 from qracer.memory.session_compactor import SessionCompactor
 from qracer.memory.session_logger import SessionLogger, TurnRecord
@@ -61,7 +61,7 @@ class ConversationEngine:
     def __init__(
         self,
         llm_registry: LLMRegistry,
-        data_registry: DataRegistry | None = None,
+        data_registry: DataRegistry,
         portfolio_config: PortfolioConfig | None = None,
         *,
         max_iterations: int = MAX_ITERATIONS,
@@ -70,8 +70,6 @@ class ConversationEngine:
         report_dir: Path | None = None,
         memory_searcher: object | None = None,
     ) -> None:
-        if data_registry is None:
-            data_registry = build_registry()
         self._llm = llm_registry
         self._intent_parser = IntentParser(llm_registry)
         self._analysis_loop = AnalysisLoop(
