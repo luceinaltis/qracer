@@ -1,6 +1,8 @@
 # Autonomous Mode
 
-Tracer runs autonomously during market hours — monitoring watchlists, detecting significant events, and proactively alerting users without being asked.
+> **구현 예정** — 자율 모니터링 모드는 아직 구현되지 않았습니다.
+
+qracer runs autonomously during market hours — monitoring watchlists, detecting significant events, and proactively alerting users without being asked.
 
 Users don't configure modes. The agent decides when to act.
 

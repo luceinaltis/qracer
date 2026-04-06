@@ -2,7 +2,7 @@
 
 ## Dual-Mode Design
 
-Tracer operates in two modes based on context:
+qracer operates in two modes based on context:
 
 | | Live Mode | Research Mode |
 |---|---|---|
@@ -77,6 +77,8 @@ Project-local and user configs merge per file: `./.qracer/providers.toml` define
 
 ## Provider Plugin System
 
+> **구현 예정** — 현재는 `provider_catalog.py` 기반 하드코딩 방식으로 동작합니다.
+
 Built-in adapters and external plugins share the same `ProviderPlugin` protocol. Lifecycle methods (`initialize`, `health_check`, `shutdown`) require DataRegistry updates — tracked separately from current implementation.
 
 ```python
@@ -142,12 +144,14 @@ terminal_port = 8194
 
 ## Real-Time Data
 
-For Live Mode, Tracer needs sub-second price data and streaming news:
+> **구현 예정** — WebSocket 실시간 데이터는 아직 구현되지 않았습니다. 현재는 REST polling만 지원합니다.
+
+For Live Mode, qracer needs sub-second price data and streaming news:
 
 | Capability | Preferred Provider | Protocol | Fallback |
 |---|---|---|---|
-| Real-time quotes | Finnhub | WebSocket | REST polling (5s interval) |
-| Streaming news | Finnhub | WebSocket | REST polling (30s interval) |
+| Real-time quotes (구현 예정) | Finnhub | WebSocket | REST polling (5s interval) |
+| Streaming news (구현 예정) | Finnhub | WebSocket | REST polling (30s interval) |
 | Price/OHLCV | Finnhub | REST | yfinance |
 | Fundamental | Finnhub | REST | FMP, yfinance |
 | Macro | FRED | REST | World Bank |
@@ -165,12 +169,12 @@ API key missing → adapter auto-skipped. Fallback kicks in transparently. Provi
 
 ## Storage
 
-DuckDB single-file database (`tracer.db`). Append-only for market data, analytical queries optimized.
+DuckDB single-file database (`qracer.db`). Append-only for market data, analytical queries optimized.
 
 ```text
-DuckDB (tracer.db)
+DuckDB (qracer.db)
 ├── prices             - OHLCV time series (daily append)
-├── prices_intraday    - tick/1min data during live sessions (ephemeral, pruned daily)
+├── prices_intraday    - tick/1min data during live sessions (구현 예정)
 ├── fundamentals       - valuation, financial statements (quarterly append)
 ├── macro              - economic indicators (monthly append)
 ├── news               - articles + sentiment scores (daily append)
@@ -178,9 +182,9 @@ DuckDB (tracer.db)
 ├── signals            - generated signal history
 ├── reports            - analysis report metadata
 ├── agent_logs         - agent execution logs
-├── session_index      - session summary metadata + FTS index
-├── session_embeddings - session summary embeddings + HNSW index
-└── alerts             - active alert rules and trigger history
+├── session_index      - session summary metadata + FTS index (구현 예정)
+├── session_embeddings - session summary embeddings + HNSW index (구현 예정)
+└── alerts             - active alert rules and trigger history (구현 예정)
 ```
 
 Also serves as API cache to reduce rate limit pressure. Export to Parquet for backup/sharing.

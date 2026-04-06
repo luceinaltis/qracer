@@ -1,6 +1,6 @@
 # Pipeline
 
-Tracer has two pipelines. The IntentRouter selects which one handles each query.
+qracer has two pipelines. The IntentRouter selects which one handles each query.
 
 ## LivePipeline (QuickPath)
 
@@ -77,13 +77,13 @@ Screening → Macro Regime → Cross-Market Discovery → Consensus Mapping
 - Output: ranked list with risk assessment
 - Agent: **strategist**
 
-### Step 7: Trade Thesis Generation (planned)
+### Step 7: Trade Thesis Generation
 - Convert analysis into structured, actionable output
 - Output fields: entry zone, target price, stop-loss, risk/reward ratio, catalyst + date, conviction (1-10)
 - Conviction score drives position sizing suggestion
 - Agent: **strategist**
 
-### Step 8: Risk Check (planned)
+### Step 8: Risk Check
 - Consult risk module (see [risk-system.md](risk-system.md)) before finalizing recommendation
 - Check portfolio exposure: sector concentration, correlation to existing holdings, beta impact
 - Adjust position sizing based on current portfolio state
@@ -113,7 +113,7 @@ ResearchPipeline runs when **any** of these are true:
 | `/deep` command | `/deep AAPL` |
 | `deep_dive` intent | "Give me everything on Samsung" |
 | `alpha_hunt` intent | "Where's the hidden alpha right now?" |
-| Scheduled | Nightly batch run (if configured) |
+| Scheduled (구현 예정) | Nightly batch run |
 
 Everything else goes through LivePipeline.
 
