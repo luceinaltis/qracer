@@ -244,10 +244,13 @@ def _build_registries() -> tuple:  # type: ignore[type-arg]
 
 _HELP_TEXT = """\
 Available commands:
-  save          Save last analysis as Markdown
-  save json     Save last analysis as JSON
-  help          Show this help
-  quit          Exit
+  save              Save last analysis as Markdown
+  save json         Save last analysis as JSON
+  watchlist         Show watchlist with current prices
+  watch TICKER      Add ticker to watchlist
+  unwatch TICKER    Remove ticker from watchlist
+  help              Show this help
+  quit              Exit
 
 Tips:
   - Ask about any ticker: "Analyze AAPL", "Why did TSLA spike?"
@@ -259,7 +262,7 @@ Note: qracer provides research analysis only, not investment advice.
 """
 
 
-async def _repl_loop(engine: object) -> None:
+async def _repl_loop(engine: object, watchlist: object) -> None:
     """Run the interactive read-eval-print loop."""
     click.echo(BANNER)
 
@@ -299,6 +302,27 @@ async def _repl_loop(engine: object) -> None:
                 click.echo("No analysis to save. Run a query first.\n")
             continue
 
+        # Watchlist commands
+        if cmd in ("watchlist", "wl", "/watchlist"):
+            _show_watchlist(watchlist)  # type: ignore[arg-type]
+            continue
+
+        if cmd.startswith(("watch ", "/watch ")):
+            ticker = user_input.split(maxsplit=1)[1].strip().upper()
+            if watchlist.add(ticker):  # type: ignore[attr-defined]
+                click.echo(f"Added {ticker} to watchlist.\n")
+            else:
+                click.echo(f"{ticker} is already on your watchlist.\n")
+            continue
+
+        if cmd.startswith(("unwatch ", "/unwatch ")):
+            ticker = user_input.split(maxsplit=1)[1].strip().upper()
+            if watchlist.remove(ticker):  # type: ignore[attr-defined]
+                click.echo(f"Removed {ticker} from watchlist.\n")
+            else:
+                click.echo(f"{ticker} is not on your watchlist.\n")
+            continue
+
         # Show progress while query is processing.
         click.echo("Analyzing...", nl=False)
         try:
@@ -317,6 +341,21 @@ async def _repl_loop(engine: object) -> None:
             click.echo("Hint: try rephrasing your query or check 'qracer status'.\n")
 
 
+def _show_watchlist(watchlist: object) -> None:
+    """Display the current watchlist."""
+    from qracer.watchlist import Watchlist
+
+    wl: Watchlist = watchlist  # type: ignore[assignment]
+    if not wl.tickers:
+        click.echo("Watchlist is empty. Use 'watch TICKER' to add.\n")
+        return
+
+    click.echo(f"Watchlist ({len(wl)} stocks)")
+    for ticker in wl.tickers:
+        click.echo(f"  {ticker}")
+    click.echo()
+
+
 @main.command()
 def repl() -> None:
     """Start interactive conversational session."""
@@ -330,6 +369,7 @@ def repl() -> None:
 
     from qracer.conversation.engine import ConversationEngine
     from qracer.memory.session_logger import SessionLogger
+    from qracer.watchlist import Watchlist
 
     llm_registry, data_registry = _build_registries()
 
@@ -340,6 +380,7 @@ def repl() -> None:
     session_logger = SessionLogger(sessions_dir / f"{session_id}.jsonl")
 
     reports_dir = _user_dir() / "reports"
+    watchlist = Watchlist(_user_dir() / "watchlist.json")
 
     engine = ConversationEngine(
         llm_registry,
@@ -347,7 +388,7 @@ def repl() -> None:
         session_logger=session_logger,
         report_dir=reports_dir,
     )
-    asyncio.run(_repl_loop(engine))
+    asyncio.run(_repl_loop(engine, watchlist))
 
 
 if __name__ == "__main__":
