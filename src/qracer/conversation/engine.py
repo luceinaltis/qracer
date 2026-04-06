@@ -19,7 +19,12 @@ from qracer.conversation.analysis_loop import (
     AnalysisLoop,
     AnalysisResult,
 )
-from qracer.conversation.context import ConversationContext, extract_context, resolve_pronoun
+from qracer.conversation.context import (
+    ConversationContext,
+    extract_context,
+    is_stale,
+    resolve_pronoun,
+)
 from qracer.conversation.dispatcher import invoke_tools
 from qracer.conversation.intent import Intent, IntentParser, IntentType
 from qracer.conversation.report_exporter import ReportExporter
@@ -141,6 +146,15 @@ class ConversationEngine:
             turns = self._session_logger.read_all()[-50:]
             self._context = extract_context(turns)
 
+        # 0b. Check for stale context — notify user if returning after timeout.
+        if is_stale(self._context) and self._context.current_topic:
+            stale_msg = (
+                f"(Welcome back. Last topic was {self._context.current_topic}. "
+                f"Continuing from there.)"
+            )
+            self._history.append({"role": "system", "content": stale_msg})
+            logger.info("Stale context detected, topic=%s", self._context.current_topic)
+
         # 1. Parse intent.
         intent = await self._intent_parser.parse(user_input)
 
@@ -155,6 +169,29 @@ class ConversationEngine:
                 tools=intent.tools,
                 raw_query=intent.raw_query,
             )
+
+        # 1c. If still no tickers and intent needs them, return clarification.
+        needs_tickers = intent.intent_type not in (
+            IntentType.MACRO_QUERY,
+            IntentType.ALPHA_HUNT,
+            IntentType.FOLLOW_UP,
+        )
+        if not intent.tickers and needs_tickers:
+            topics = self._context.topic_stack[:3]
+            if topics:
+                clarification = (
+                    f"Which ticker are you referring to? Recent topics: {', '.join(topics)}"
+                )
+            else:
+                clarification = (
+                    "Which ticker would you like me to analyze? "
+                    "Example: 'Analyze AAPL' or 'Why did TSLA spike?'"
+                )
+            analysis = AnalysisResult(confidence=0.0, iterations=0)
+            self._history.append({"role": "assistant", "content": clarification})
+            self._log_turn("assistant", clarification)
+            return EngineResponse(text=clarification, intent=intent, analysis=analysis)
+
         logger.info(
             "Parsed intent: %s tickers=%s tools=%s",
             intent.intent_type.value,
