@@ -164,6 +164,30 @@ class TestIntentParserKeywordFallback:
         intent = await parser.parse("How does oil affect airlines?")
         assert intent.intent_type == IntentType.CROSS_MARKET
 
+    async def test_keyword_comparison_compare(self) -> None:
+        mock_provider = AsyncMock()
+        mock_provider.complete.side_effect = RuntimeError("fail")
+        registry = LLMRegistry()
+        registry.register("mock", mock_provider, [Role.RESEARCHER])
+
+        parser = IntentParser(registry)
+        intent = await parser.parse("Compare AAPL and MSFT")
+        assert intent.intent_type == IntentType.COMPARISON
+        assert "AAPL" in intent.tickers
+        assert "MSFT" in intent.tickers
+
+    async def test_keyword_comparison_vs(self) -> None:
+        mock_provider = AsyncMock()
+        mock_provider.complete.side_effect = RuntimeError("fail")
+        registry = LLMRegistry()
+        registry.register("mock", mock_provider, [Role.RESEARCHER])
+
+        parser = IntentParser(registry)
+        intent = await parser.parse("AAPL vs TSLA")
+        assert intent.intent_type == IntentType.COMPARISON
+        assert "AAPL" in intent.tickers
+        assert "TSLA" in intent.tickers
+
     async def test_keyword_fallback_default(self) -> None:
         mock_provider = AsyncMock()
         mock_provider.complete.side_effect = RuntimeError("fail")

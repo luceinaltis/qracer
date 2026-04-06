@@ -1,6 +1,7 @@
 from tracer.conversation.engine import (
     AnalysisLoop,
     AnalysisResult,
+    ComparisonSynthesizer,
     ConversationEngine,
     EngineResponse,
     ResponseSynthesizer,
@@ -15,6 +16,7 @@ from tracer.conversation.intent import (
 __all__ = [
     "AnalysisLoop",
     "AnalysisResult",
+    "ComparisonSynthesizer",
     "ConversationEngine",
     "EngineResponse",
     "INTENT_TOOL_MAP",

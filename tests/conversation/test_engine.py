@@ -13,6 +13,7 @@ from tracer.config.models import Holding, PortfolioConfig
 from tracer.conversation.engine import (
     AnalysisLoop,
     AnalysisResult,
+    ComparisonSynthesizer,
     ConversationEngine,
     EngineResponse,
     ResponseSynthesizer,
@@ -440,3 +441,105 @@ class TestConversationEngine:
 
         # With threshold 0.9 and confidence 0.5, it should have low confidence.
         assert response.analysis.confidence < 0.9
+
+
+# ---------------------------------------------------------------------------
+# ComparisonSynthesizer
+# ---------------------------------------------------------------------------
+
+
+class TestComparisonSynthesizer:
+    async def test_synthesize_calls_strategist(self) -> None:
+        llm = _mock_llm_registry(
+            {
+                Role.STRATEGIST: (
+                    "[COMPARISON: AAPL, MSFT]\n"
+                    "| Metric | AAPL | MSFT |\n"
+                    "|---|---|---|\n"
+                    "| Price | 180 | 350 |\n\n"
+                    "VERDICT\nMSFT is stronger."
+                ),
+            }
+        )
+        synth = ComparisonSynthesizer(llm)
+        intent = Intent(
+            IntentType.COMPARISON,
+            tickers=["AAPL", "MSFT"],
+            raw_query="Compare AAPL and MSFT",
+        )
+        per_ticker = {
+            "AAPL": [_ok_result("price_event"), _ok_result("fundamentals")],
+            "MSFT": [_ok_result("price_event"), _ok_result("fundamentals")],
+        }
+
+        text = await synth.synthesize(intent, per_ticker)
+        assert "COMPARISON" in text
+        assert "AAPL" in text
+        assert "MSFT" in text
+
+    async def test_fallback_on_llm_failure(self) -> None:
+        provider = AsyncMock()
+        provider.complete.side_effect = RuntimeError("LLM down")
+        llm = LLMRegistry()
+        llm.register("mock", provider, [Role.STRATEGIST])
+
+        synth = ComparisonSynthesizer(llm)
+        intent = Intent(IntentType.COMPARISON, tickers=["AAPL", "MSFT"], raw_query="AAPL vs MSFT")
+        per_ticker = {
+            "AAPL": [_ok_result("price_event")],
+            "MSFT": [_ok_result("price_event"), _failed_result("fundamentals")],
+        }
+
+        text = await synth.synthesize(intent, per_ticker)
+        assert "COMPARISON" in text
+        assert "LLM error" in text
+
+
+# ---------------------------------------------------------------------------
+# ConversationEngine — comparison path
+# ---------------------------------------------------------------------------
+
+
+class TestConversationEngineComparison:
+    async def test_comparison_pipeline(self) -> None:
+        intent_resp = json.dumps({"intent": "comparison", "tickers": ["AAPL", "MSFT"]})
+        comparison_resp = (
+            "[COMPARISON: AAPL, MSFT]\n"
+            "| Metric | AAPL | MSFT |\n"
+            "|---|---|---|\n"
+            "| Price | 180 | 350 |\n\n"
+            "VERDICT\nMSFT is stronger."
+        )
+
+        llm = _mock_llm_registry({Role.RESEARCHER: intent_resp, Role.STRATEGIST: comparison_resp})
+        engine = ConversationEngine(llm, DataRegistry())
+
+        with patch("tracer.conversation.engine._invoke_tools") as mock_invoke:
+            mock_invoke.return_value = [_ok_result("price_event"), _ok_result("fundamentals")]
+            response = await engine.query("Compare AAPL and MSFT")
+
+        assert isinstance(response, EngineResponse)
+        assert response.intent.intent_type == IntentType.COMPARISON
+        assert "COMPARISON" in response.text
+        assert mock_invoke.call_count == 2  # once per ticker
+
+    async def test_single_ticker_comparison_falls_through(self) -> None:
+        intent_resp = json.dumps({"intent": "comparison", "tickers": ["AAPL"]})
+        analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
+        synth_resp = "[ANALYSIS: AAPL]\nStandard response"
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: intent_resp,
+                Role.ANALYST: analysis_resp,
+                Role.STRATEGIST: synth_resp,
+            }
+        )
+        engine = ConversationEngine(llm, DataRegistry())
+
+        with patch("tracer.conversation.engine._invoke_tools") as mock_invoke:
+            mock_invoke.return_value = [_ok_result("price_event")]
+            response = await engine.query("Compare AAPL")
+
+        assert response.intent.intent_type == IntentType.COMPARISON
+        assert "ANALYSIS" in response.text
