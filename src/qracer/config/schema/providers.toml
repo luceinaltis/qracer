@@ -32,9 +32,9 @@ tier = "warm"
 kind = "data"
 api_key_env = "FINNHUB_API_KEY"
 
-# [providers.fred]
-# enabled = false
-# priority = 50
-# tier = "warm"
-# kind = "data"
-# api_key_env = "FRED_API_KEY"
+[providers.fred]
+enabled = false
+priority = 50
+tier = "warm"
+kind = "data"
+api_key_env = "FRED_API_KEY"

@@ -27,3 +27,11 @@ __all__ = [
     "PriceProvider",
     "YfinanceAdapter",
 ]
+
+# Optional adapter — only available when fredapi is installed.
+try:
+    from qracer.data.fred_adapter import FredAdapter
+
+    __all__ += ["FredAdapter"]
+except ImportError:
+    pass
