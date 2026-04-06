@@ -5,6 +5,8 @@ Pipeline steps: Contrarian Detection (step 5), Conviction Scoring (step 6).
 
 from __future__ import annotations
 
+import json
+
 from tracer.agents.base import BaseAgent
 from tracer.llm.providers import Role
 from tracer.models import Signal, SignalDirection
@@ -35,9 +37,7 @@ class Strategist(BaseAgent):
             List of contrarian signal dicts with ticker, thesis,
             contrarian_angle, and direction.
         """
-        import json
-
-        response = await self._complete(
+        result = await self._complete_json(
             system=(
                 "You are a contrarian investment strategist. Compare cross-market "
                 "analysis against consensus views. Identify where consensus is wrong, "
@@ -50,13 +50,9 @@ class Strategist(BaseAgent):
                 f"Cross-market findings:\n{json.dumps(cross_market, indent=2)}\n\n"
                 f"Consensus view:\n{json.dumps(consensus, indent=2)}"
             ),
+            fallback=[],
         )
-
-        try:
-            result = json.loads(response.content)
-            return result if isinstance(result, list) else []
-        except (json.JSONDecodeError, ValueError):
-            return []
+        return result if isinstance(result, list) else []
 
     async def score_signals(self, contrarian_signals: list[dict]) -> list[Signal]:
         """Score contrarian signals by conviction, time horizon, and risk.
@@ -70,9 +66,7 @@ class Strategist(BaseAgent):
         if not contrarian_signals:
             return []
 
-        import json
-
-        response = await self._complete(
+        scored = await self._complete_json(
             system=(
                 "You are a conviction scorer. For each contrarian signal, assign:\n"
                 "- conviction: 0.0-10.0 (data quality, signal convergence, "
@@ -84,13 +78,10 @@ class Strategist(BaseAgent):
                 "time_horizon_days."
             ),
             user=f"Score these signals:\n{json.dumps(contrarian_signals, indent=2)}",
+            fallback=[],
         )
 
-        try:
-            scored = json.loads(response.content)
-            if not isinstance(scored, list):
-                return []
-        except (json.JSONDecodeError, ValueError):
+        if not isinstance(scored, list):
             return []
 
         signals: list[Signal] = []

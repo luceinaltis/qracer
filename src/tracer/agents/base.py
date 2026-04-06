@@ -48,6 +48,30 @@ class BaseAgent(ABC):
         )
         return await provider.complete(request)
 
+    async def _complete_json(
+        self,
+        system: str,
+        user: str,
+        *,
+        fallback: Any = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> Any:
+        """Call LLM and parse the response as JSON.
+
+        Returns *fallback* (default ``None``) when the response is not
+        valid JSON.  This eliminates the repeated ``try: json.loads()``
+        pattern found in every agent method.
+        """
+        response = await self._complete(
+            system, user, temperature=temperature, max_tokens=max_tokens
+        )
+        try:
+            return json.loads(response.content)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("JSON parse failed for %s, returning fallback", type(self).__name__)
+            return fallback if fallback is not None else {"raw": response.content}
+
     @staticmethod
     def _successful_results(results: list[ToolResult]) -> list[ToolResult]:
         """Filter to only successful tool results."""
