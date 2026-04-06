@@ -26,7 +26,8 @@ from qracer.conversation.context import (
     resolve_pronoun,
 )
 from qracer.conversation.dispatcher import invoke_tools
-from qracer.conversation.intent import Intent, IntentParser, IntentType
+from qracer.conversation.intent import QUICKPATH_INTENTS, Intent, IntentParser, IntentType
+from qracer.conversation.quickpath import format_quickpath
 from qracer.conversation.report_exporter import ReportExporter
 from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynthesizer
 from qracer.data.registry import DataRegistry, build_registry
@@ -199,15 +200,29 @@ class ConversationEngine:
             intent.tools,
         )
 
-        # 2. Comparison branch: per-ticker analysis + comparison table.
-        if intent.intent_type == IntentType.COMPARISON and len(intent.tickers) >= 2:
+        # 2. QuickPath: template-based response, no AnalysisLoop.
+        if intent.intent_type in QUICKPATH_INTENTS:
+            response = await self._handle_quickpath(intent)
+        # 3. Comparison branch: per-ticker analysis + comparison table.
+        elif intent.intent_type == IntentType.COMPARISON and len(intent.tickers) >= 2:
             response = await self._handle_comparison(intent)
         else:
-            # 3. Standard analysis path.
+            # 4. Standard analysis path (DeepPath).
             response = await self._handle_standard(intent)
 
         self._last_response = response
         return response
+
+    async def _handle_quickpath(self, intent: Intent) -> EngineResponse:
+        """QuickPath: fetch 1-2 tools, format with template, no LLM."""
+        results = await invoke_tools(
+            intent.tools, intent, self._data, memory_searcher=self._memory_searcher
+        )
+        text = format_quickpath(intent, results)
+        analysis = AnalysisResult(results=results, confidence=1.0, iterations=0)
+        self._history.append({"role": "assistant", "content": text})
+        self._log_turn("assistant", text)
+        return EngineResponse(text=text, intent=intent, analysis=analysis)
 
     async def _handle_comparison(self, intent: Intent) -> EngineResponse:
         """Run per-ticker analysis concurrently and synthesize comparison."""

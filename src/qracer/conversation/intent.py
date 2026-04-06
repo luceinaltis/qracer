@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 class IntentType(str, Enum):
     """Supported intent types from the conversational-layer spec."""
 
+    # QuickPath intents (< 5s, 0-1 LLM calls)
+    PRICE_CHECK = "price_check"
+    QUICK_NEWS = "quick_news"
+    # DeepPath intents (30-120s, 3-7 LLM calls)
     EVENT_ANALYSIS = "event_analysis"
     DEEP_DIVE = "deep_dive"
     ALPHA_HUNT = "alpha_hunt"
@@ -29,8 +33,13 @@ class IntentType(str, Enum):
     COMPARISON = "comparison"
 
 
+# Intents that use the QuickPath (no AnalysisLoop).
+QUICKPATH_INTENTS = frozenset({IntentType.PRICE_CHECK, IntentType.QUICK_NEWS})
+
 # Which pipeline tools each intent invokes by default.
 INTENT_TOOL_MAP: dict[IntentType, list[str]] = {
+    IntentType.PRICE_CHECK: ["price_event"],
+    IntentType.QUICK_NEWS: ["news"],
     IntentType.EVENT_ANALYSIS: ["price_event", "news", "insider", "cross_market"],
     IntentType.DEEP_DIVE: [
         "price_event",
@@ -65,11 +74,13 @@ class Intent:
 _SYSTEM_PROMPT = """\
 You are a query classifier for a financial analysis system.
 Given a user query, return a JSON object with:
-- "intent": one of event_analysis, deep_dive, alpha_hunt, macro_query, \
-cross_market, follow_up, comparison
+- "intent": one of price_check, quick_news, event_analysis, deep_dive, \
+alpha_hunt, macro_query, cross_market, follow_up, comparison
 - "tickers": list of stock tickers mentioned (uppercase, empty list if none)
 
 Rules:
+- "What's AAPL at?", "Price of X", "How's X doing?" → price_check
+- "Any news on X?", "News for X" → quick_news
 - "Why did X move/spike/drop" → event_analysis
 - "Full analysis on X" or "Tell me about X" → deep_dive
 - "Where's alpha" or "hidden opportunities" → alpha_hunt
@@ -125,6 +136,17 @@ class IntentParser:
 
         # Extract uppercase tickers (simple heuristic: 1-5 letter uppercase words).
         tickers = _extract_tickers(query)
+
+        # QuickPath: simple price check (single ticker, short query).
+        if tickers and any(
+            w in q
+            for w in ("price", "what's", "whats", "how's", "hows", "how much", "quote", "at?")
+        ):
+            return Intent(IntentType.PRICE_CHECK, tickers=tickers, raw_query=query)
+
+        # QuickPath: news lookup.
+        if tickers and any(w in q for w in ("news", "headlines", "latest on")):
+            return Intent(IntentType.QUICK_NEWS, tickers=tickers, raw_query=query)
 
         # Comparison must be checked first — "Compare AAPL spike" should be comparison.
         if len(tickers) >= 2 and any(w in q for w in ("compare", " vs ", "versus")):
