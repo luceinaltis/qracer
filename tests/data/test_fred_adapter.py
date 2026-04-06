@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 
 from qracer.data.providers import MacroIndicator, MacroProvider
 
-
 # ---------------------------------------------------------------------------
 # Import guard — tests work even when fredapi is not installed
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def _mock_fredapi(monkeypatch: pytest.MonkeyPatch):
@@ -35,6 +35,7 @@ def _mock_fredapi(monkeypatch: pytest.MonkeyPatch):
 # ---------------------------------------------------------------------------
 # Constructor tests
 # ---------------------------------------------------------------------------
+
 
 class TestFredAdapterInit:
     def test_raises_without_fredapi(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -67,6 +68,7 @@ class TestFredAdapterInit:
 # Protocol conformance
 # ---------------------------------------------------------------------------
 
+
 class TestProtocolConformance:
     def test_satisfies_macro_provider(self, _mock_fredapi: MagicMock) -> None:
         from qracer.data.fred_adapter import FredAdapter
@@ -78,6 +80,7 @@ class TestProtocolConformance:
 # ---------------------------------------------------------------------------
 # get_indicator tests
 # ---------------------------------------------------------------------------
+
 
 class TestGetIndicator:
     async def test_known_indicator(self, _mock_fredapi: MagicMock) -> None:
@@ -168,13 +171,21 @@ class TestGetIndicator:
         """Verify all six required indicators have mappings."""
         from qracer.data.fred_adapter import _INDICATOR_MAP
 
-        expected = {"fed_funds_rate", "treasury_10y", "cpi_yoy", "gdp_growth", "unemployment", "vix"}
+        expected = {
+            "fed_funds_rate",
+            "treasury_10y",
+            "cpi_yoy",
+            "gdp_growth",
+            "unemployment",
+            "vix",
+        }
         assert set(_INDICATOR_MAP.keys()) == expected
 
 
 # ---------------------------------------------------------------------------
 # Provider catalog integration
 # ---------------------------------------------------------------------------
+
 
 class TestCatalogRegistration:
     def test_fred_in_catalog(self) -> None:
