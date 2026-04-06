@@ -52,3 +52,5 @@ class RiskAssessment(BaseModel):
     exposure: ExposureBreakdown
     limits_breached: list[str] = Field(default_factory=list)
     max_drawdown_alert: bool = False
+    current_drawdown_pct: float = 0.0
+    peak_value: float = 0.0
