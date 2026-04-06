@@ -10,7 +10,6 @@ from helpers import make_single_role_registry
 
 from qracer.conversation.context import ConversationContext
 from qracer.conversation.intent import (
-    CONFIDENCE_HIGH,
     INTENT_TOOL_MAP,
     Intent,
     IntentParser,
