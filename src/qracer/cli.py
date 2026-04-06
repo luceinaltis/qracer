@@ -266,7 +266,12 @@ def _write_toml(path: Path, data: dict) -> None:  # type: ignore[type-arg]
 
 
 def _build_registries() -> tuple:  # type: ignore[type-arg]
-    """Build LLM and data registries from providers.toml + provider catalog."""
+    """Build LLM and data registries from providers.toml + provider catalog.
+
+    Returns ``(llm_registry, data_registry, warnings)`` where *warnings*
+    is a list of human-readable strings describing providers that could
+    not be loaded.
+    """
     import importlib
 
     from qracer.data.registry import DataRegistry
@@ -277,6 +282,7 @@ def _build_registries() -> tuple:  # type: ignore[type-arg]
     config = load_config()
     llm_registry = LLMRegistry()
     data_registry = DataRegistry()
+    warnings: list[str] = []
 
     sorted_providers = sorted(
         config.providers.providers.items(),
@@ -287,44 +293,48 @@ def _build_registries() -> tuple:  # type: ignore[type-arg]
         if not prov_cfg.enabled:
             continue
 
+        # Resolve API key (shared by data and llm paths)
+        api_key: str | None = None
+        if prov_cfg.api_key_env:
+            api_key = config.credentials.get(prov_cfg.api_key_env) or os.environ.get(
+                prov_cfg.api_key_env
+            )
+            if not api_key:
+                msg = f"{name}: {prov_cfg.api_key_env} not set — skipped"
+                warnings.append(msg)
+                logger.warning("Provider '%s' skipped: %s not set", name, prov_cfg.api_key_env)
+                continue
+
         if prov_cfg.kind == "data" and name in BUILTIN_DATA_PROVIDERS:
             adapter_path, cap_paths = BUILTIN_DATA_PROVIDERS[name]
             try:
                 mod_path, cls_name = adapter_path.rsplit(".", 1)
                 adapter_cls = getattr(importlib.import_module(mod_path), cls_name)
-                # Inject API key from credentials if declared
-                api_key = None
-                if prov_cfg.api_key_env:
-                    api_key = config.credentials.get(prov_cfg.api_key_env) or os.environ.get(
-                        prov_cfg.api_key_env
-                    )
                 adapter = adapter_cls(api_key=api_key) if api_key else adapter_cls()
                 caps = []
                 for cp in cap_paths:
                     cp_mod, cp_name = cp.rsplit(".", 1)
                     caps.append(getattr(importlib.import_module(cp_mod), cp_name))
                 data_registry.register(name, adapter, caps)
-            except Exception:
-                logger.warning("Data provider '%s' unavailable", name, exc_info=True)
+            except Exception as exc:
+                msg = f"{name}: {exc}"
+                warnings.append(msg)
+                logger.warning("Data provider '%s' unavailable: %s", name, exc)
 
         elif prov_cfg.kind == "llm" and name in BUILTIN_LLM_PROVIDERS:
             adapter_path, role_values = BUILTIN_LLM_PROVIDERS[name]
             try:
                 mod_path, cls_name = adapter_path.rsplit(".", 1)
                 adapter_cls = getattr(importlib.import_module(mod_path), cls_name)
-                # Inject API key from credentials if declared
-                api_key = None
-                if prov_cfg.api_key_env:
-                    api_key = config.credentials.get(prov_cfg.api_key_env) or os.environ.get(
-                        prov_cfg.api_key_env
-                    )
                 adapter = adapter_cls(api_key=api_key)
                 roles = [Role(v) for v in role_values]
                 llm_registry.register(name, adapter, roles)
-            except Exception:
-                logger.warning("LLM provider '%s' unavailable", name, exc_info=True)
+            except Exception as exc:
+                msg = f"{name}: {exc}"
+                warnings.append(msg)
+                logger.warning("LLM provider '%s' unavailable: %s", name, exc)
 
-    return llm_registry, data_registry
+    return llm_registry, data_registry, warnings
 
 
 _HELP_TEXT = """\
@@ -376,9 +386,12 @@ async def _repl_loop(engine: object, watchlist: object) -> None:
         # Hot-plug: reload config and rebuild registries if files changed
         if has_config_changed():
             try:
-                llm_reg, data_reg = _build_registries()
+                llm_reg, data_reg, reload_warnings = _build_registries()
                 engine.update_registries(llm_reg, data_reg)  # type: ignore[attr-defined]
-                click.echo("⟳ Configuration reloaded.\n")
+                click.echo("⟳ Configuration reloaded.")
+                for warn in reload_warnings:
+                    click.echo(f"  ⚠ {warn}")
+                click.echo()
             except Exception:
                 logger.warning("Config reload failed", exc_info=True)
 
@@ -467,7 +480,13 @@ def repl() -> None:
     from qracer.memory.session_logger import SessionLogger
     from qracer.watchlist import Watchlist
 
-    llm_registry, data_registry = _build_registries()
+    llm_registry, data_registry, provider_warnings = _build_registries()
+
+    # Surface provider warnings so the user knows what's unavailable.
+    for warn in provider_warnings:
+        click.echo(f"  ⚠ {warn}")
+    if provider_warnings:
+        click.echo()
 
     # Create session logger in ~/.qracer/sessions/<uuid>.jsonl
     sessions_dir = _user_dir() / "sessions"

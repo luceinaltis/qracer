@@ -30,6 +30,9 @@ class AnalysisResult:
     trade_thesis: TradeThesis | None = None
 
 
+_MAX_CONSECUTIVE_EVAL_FAILURES = 2
+
+
 class AnalysisLoop:
     """Iteratively gathers data until confidence threshold or max iterations.
 
@@ -56,6 +59,7 @@ class AnalysisLoop:
         """Run the analysis loop starting from initial tool results."""
         all_results = list(initial_results)
         iterations = 0
+        consecutive_eval_failures = 0
 
         for iteration in range(self._max_iterations):
             iterations = iteration + 1
@@ -71,7 +75,23 @@ class AnalysisLoop:
                     early_exit_reason=">=2 tools failed in first iteration",
                 )
 
-            confidence, missing_tools = await self._evaluate(intent, successful)
+            confidence, missing_tools, eval_ok = await self._evaluate(intent, successful)
+
+            if not eval_ok:
+                consecutive_eval_failures += 1
+                if consecutive_eval_failures >= _MAX_CONSECUTIVE_EVAL_FAILURES:
+                    logger.error(
+                        "AnalysisLoop: %d consecutive evaluation failures, exiting early",
+                        consecutive_eval_failures,
+                    )
+                    return AnalysisResult(
+                        results=all_results,
+                        confidence=confidence,
+                        iterations=iterations,
+                        early_exit_reason="LLM evaluation failed repeatedly",
+                    )
+            else:
+                consecutive_eval_failures = 0
 
             if confidence >= self._confidence_threshold:
                 return AnalysisResult(
@@ -99,8 +119,15 @@ class AnalysisLoop:
             iterations=iterations,
         )
 
-    async def _evaluate(self, intent: Intent, results: list[ToolResult]) -> tuple[float, list[str]]:
-        """Ask the analyst LLM to evaluate confidence and suggest missing tools."""
+    async def _evaluate(
+        self, intent: Intent, results: list[ToolResult]
+    ) -> tuple[float, list[str], bool]:
+        """Ask the analyst LLM to evaluate confidence and suggest missing tools.
+
+        Returns ``(confidence, missing_tools, success)``.  When the LLM
+        call fails, *success* is ``False`` so the caller can track
+        consecutive failures and abort early.
+        """
         evidence = format_evidence(results)
         system = (
             "You are an analyst evaluating whether collected data is sufficient to "
@@ -132,10 +159,10 @@ class AnalysisLoop:
             missing = [t for t in parsed.get("missing_tools", []) if t in TOOL_DISPATCH]
             already_called = {r.tool for r in results}
             missing = [t for t in missing if t not in already_called]
-            return confidence, missing
+            return confidence, missing, True
         except Exception:
             logger.warning("AnalysisLoop evaluation failed", exc_info=True)
-            return 0.0, []
+            return 0.0, [], False
 
 
 def format_evidence(results: list[ToolResult]) -> str:
