@@ -92,14 +92,24 @@ def resolve_config_dirs() -> list[Path]:
 
 
 def _load_toml(path: Path) -> dict[str, Any]:
-    """Read a TOML file, returning an empty dict on failure."""
+    """Read a TOML file, returning an empty dict if not found.
+
+    Raises a clear warning with the file path and error detail on parse
+    failures so the user can fix the file rather than getting silently
+    empty config.
+    """
     try:
         with open(path, "rb") as f:
             return tomllib.load(f)
     except FileNotFoundError:
         return {}
     except Exception:
-        logger.warning("Failed to parse %s", path, exc_info=True)
+        logger.error(
+            "Failed to parse %s — config from this file will be ignored. "
+            "Fix the file or delete it and re-run 'qracer install'.",
+            path,
+            exc_info=True,
+        )
         return {}
 
 

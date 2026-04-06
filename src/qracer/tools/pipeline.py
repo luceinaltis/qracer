@@ -388,6 +388,16 @@ async def risk_check(
         # Check limits (including the hypothetical new position).
         breached = calculator.check_limits(snapshot, exposure)
 
+        # Flag missing data so the report can mention it.
+        caveats: list[str] = []
+        missing_prices = [h.ticker for h in config.holdings if h.ticker not in prices]
+        if missing_prices:
+            caveats.append(f"Price unavailable for: {', '.join(missing_prices)}")
+        if exposure.portfolio_beta == 0.0 and len(snapshot.holdings) > 0:
+            caveats.append(
+                "Correlation/beta data unavailable — sizing without correlation adjustment"
+            )
+
         now = datetime.now()
         return ToolResult(
             tool="risk_check",
@@ -401,6 +411,7 @@ async def risk_check(
                 "top_sector": exposure.top_sector,
                 "top_sector_pct": exposure.top_sector_pct,
                 "limits_breached": breached,
+                "caveats": caveats,
                 "sized_recommendation": (
                     f"Allocate {allocation_pct:.2f}% of portfolio to {ticker}"
                     if not breached

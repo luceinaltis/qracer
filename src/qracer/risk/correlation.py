@@ -211,7 +211,12 @@ class CorrelationEngine:
 
             benchmark_bars = await self._provider.get_ohlcv(BENCHMARK_TICKER, start, end)
         except Exception:
-            logger.warning("Failed to fetch OHLCV data for correlation computation", exc_info=True)
+            logger.warning(
+                "Correlation/beta unavailable: failed to fetch OHLCV data for %s. "
+                "Risk assessment will proceed without correlation adjustments.",
+                [h.ticker for h in holdings],
+                exc_info=True,
+            )
             return None
 
         result = compute_correlation_result(holdings, ohlcv_data, benchmark_bars)

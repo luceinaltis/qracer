@@ -353,6 +353,12 @@ class ConversationEngine:
                     )
                 except (KeyError, ValueError, TypeError):
                     logger.warning("Failed to reconstruct TradeThesis from result")
+            elif not thesis_result.success:
+                logger.warning(
+                    "Trade thesis generation failed for %s: %s",
+                    intent.tickers[0],
+                    thesis_result.error,
+                )
 
         # Risk check (step 8) — only when a trade thesis was produced.
         if analysis.trade_thesis is not None and self._portfolio_config.holdings:
