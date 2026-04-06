@@ -24,7 +24,8 @@ from tracer.conversation.intent import Intent, IntentParser, IntentType
 from tracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynthesizer
 from tracer.data.registry import DataRegistry, build_registry
 from tracer.llm.registry import LLMRegistry
-from tracer.memory.session_logger import SessionLogger
+from tracer.memory.session_compactor import SessionCompactor
+from tracer.memory.session_logger import SessionLogger, TurnRecord
 from tracer.models import ToolResult, TradeThesis
 from tracer.tools import pipeline
 
@@ -73,16 +74,43 @@ class ConversationEngine:
         self._portfolio_config = portfolio_config or PortfolioConfig()
         self._history: list[dict] = []
         self._session_logger = session_logger
+        self._compactor = SessionCompactor(llm_registry) if session_logger else None
         self._context: ConversationContext = ConversationContext()
+        self._turn_counter = 0
 
     @property
     def history(self) -> list[dict]:
         """Turn history for the current session."""
         return list(self._history)
 
+    def _log_turn(self, role: str, content: str, **kwargs: object) -> None:
+        """Append a turn to the session log if a logger is configured."""
+        if self._session_logger is None:
+            return
+        self._turn_counter += 1
+        self._session_logger.append(
+            TurnRecord(turn=self._turn_counter, role=role, content=content, **kwargs)  # type: ignore[arg-type]
+        )
+
+    async def _maybe_compact(self) -> None:
+        """Trigger compaction if the session log exceeds the token threshold."""
+        if self._compactor is None or self._session_logger is None:
+            return
+        if self._compactor.needs_compaction(self._session_logger):
+            try:
+                result = await self._compactor.compact(self._session_logger)
+                logger.info(
+                    "Session compacted: %d turns → %d tokens summary",
+                    result.turn_count,
+                    result.output_tokens,
+                )
+            except Exception:
+                logger.warning("Session compaction failed", exc_info=True)
+
     async def query(self, user_input: str) -> EngineResponse:
         """Process a user query through the full pipeline."""
         self._history.append({"role": "user", "content": user_input})
+        self._log_turn("user", user_input)
 
         # 0. Extract conversation context from session log.
         if self._session_logger is not None:
@@ -136,6 +164,8 @@ class ConversationEngine:
         analysis = AnalysisResult(results=all_results, confidence=0.7, iterations=1)
         text = await self._comparison_synthesizer.synthesize(intent, per_ticker_results)
         self._history.append({"role": "assistant", "content": text})
+        self._log_turn("assistant", text)
+        await self._maybe_compact()
         return EngineResponse(text=text, intent=intent, analysis=analysis)
 
     async def _handle_standard(self, intent: Intent) -> EngineResponse:
@@ -187,5 +217,7 @@ class ConversationEngine:
         # Synthesize response.
         text = await self._synthesizer.synthesize(intent, analysis)
         self._history.append({"role": "assistant", "content": text})
+        self._log_turn("assistant", text)
+        await self._maybe_compact()
 
         return EngineResponse(text=text, intent=intent, analysis=analysis)

@@ -277,10 +277,20 @@ def repl() -> None:
         stream=sys.stderr,
     )
 
+    import uuid
+
     from tracer.conversation.engine import ConversationEngine
+    from tracer.memory.session_logger import SessionLogger
 
     llm_registry, data_registry = _build_registries()
-    engine = ConversationEngine(llm_registry, data_registry)
+
+    # Create session logger in ~/.qracer/sessions/<uuid>.jsonl
+    sessions_dir = _user_dir() / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    session_id = uuid.uuid4().hex[:12]
+    session_logger = SessionLogger(sessions_dir / f"{session_id}.jsonl")
+
+    engine = ConversationEngine(llm_registry, data_registry, session_logger=session_logger)
     asyncio.run(_repl_loop(engine))
 
 

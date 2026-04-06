@@ -537,3 +537,87 @@ class TestConversationEngineComparison:
 
         assert response.intent.intent_type == IntentType.COMPARISON
         assert "ANALYSIS" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Session logging integration
+# ---------------------------------------------------------------------------
+
+
+class TestSessionLogging:
+    async def test_query_logs_user_and_assistant_turns(self, tmp_path) -> None:
+        """Engine should log user input and assistant response to SessionLogger."""
+        from tracer.memory.session_logger import SessionLogger
+
+        log_path = tmp_path / "test.jsonl"
+        session_logger = SessionLogger(log_path)
+
+        intent_resp = json.dumps({"intent": "macro_query", "tickers": []})
+        analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: intent_resp,
+                Role.ANALYST: analysis_resp,
+                Role.STRATEGIST: "Response text",
+            }
+        )
+        engine = ConversationEngine(llm, DataRegistry(), session_logger=session_logger)
+
+        with patch("tracer.conversation.engine.invoke_tools") as mock_invoke:
+            mock_invoke.return_value = []
+            await engine.query("What is inflation?")
+
+        turns = session_logger.read_all()
+        assert len(turns) >= 2
+        assert turns[0].role == "user"
+        assert turns[0].content == "What is inflation?"
+        assert turns[-1].role == "assistant"
+
+    async def test_turn_counter_increments(self, tmp_path) -> None:
+        """Turn counter should increment across multiple queries."""
+        from tracer.memory.session_logger import SessionLogger
+
+        log_path = tmp_path / "test.jsonl"
+        session_logger = SessionLogger(log_path)
+
+        intent_resp = json.dumps({"intent": "macro_query", "tickers": []})
+        analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: [intent_resp, intent_resp],
+                Role.ANALYST: [analysis_resp, analysis_resp],
+                Role.STRATEGIST: ["Response 1", "Response 2"],
+            }
+        )
+        engine = ConversationEngine(llm, DataRegistry(), session_logger=session_logger)
+
+        with patch("tracer.conversation.engine.invoke_tools") as mock_invoke:
+            mock_invoke.return_value = []
+            await engine.query("Query 1")
+            await engine.query("Query 2")
+
+        turns = session_logger.read_all()
+        turn_numbers = [t.turn for t in turns]
+        assert turn_numbers == [1, 2, 3, 4]  # user1, assistant1, user2, assistant2
+
+    async def test_no_logging_without_session_logger(self) -> None:
+        """Engine without session_logger should work normally without errors."""
+        intent_resp = json.dumps({"intent": "macro_query", "tickers": []})
+        analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: intent_resp,
+                Role.ANALYST: analysis_resp,
+                Role.STRATEGIST: "Response",
+            }
+        )
+        engine = ConversationEngine(llm, DataRegistry())  # no session_logger
+
+        with patch("tracer.conversation.engine.invoke_tools") as mock_invoke:
+            mock_invoke.return_value = []
+            response = await engine.query("Test query")
+
+        assert response.text == "Response"
