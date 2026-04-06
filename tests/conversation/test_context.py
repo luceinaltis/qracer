@@ -99,6 +99,49 @@ class TestResolvePronounPrevious:
         assert resolve_pronoun("previous", ctx) is None
 
 
+class TestResolvePronounAnother:
+    def test_another_one_excludes_current(self):
+        ctx = ConversationContext(
+            current_topic="AAPL",
+            topic_stack=["AAPL", "TSLA", "NVDA"],
+        )
+        result = resolve_pronoun("another one", ctx)
+        assert result == "TSLA"
+        assert result != "AAPL"
+
+    def test_another_excludes_current(self):
+        ctx = ConversationContext(
+            current_topic="TSLA",
+            topic_stack=["TSLA", "AAPL"],
+        )
+        assert resolve_pronoun("another", ctx) == "AAPL"
+
+    def test_something_else(self):
+        ctx = ConversationContext(
+            current_topic="AAPL",
+            topic_stack=["AAPL", "NVDA"],
+        )
+        assert resolve_pronoun("something else", ctx) == "NVDA"
+
+    def test_korean_another(self):
+        ctx = ConversationContext(
+            current_topic="AAPL",
+            topic_stack=["AAPL", "TSLA"],
+        )
+        assert resolve_pronoun("다른 거", ctx) == "TSLA"
+
+    def test_another_no_alternatives(self):
+        ctx = ConversationContext(
+            current_topic="AAPL",
+            topic_stack=["AAPL"],
+        )
+        assert resolve_pronoun("another one", ctx) is None
+
+    def test_another_empty_stack(self):
+        ctx = ConversationContext()
+        assert resolve_pronoun("another one", ctx) is None
+
+
 class TestIsStale:
     def test_fresh_context(self):
         ctx = ConversationContext(last_activity=datetime.now())

@@ -158,8 +158,23 @@ class ConversationEngine:
             self._history.append({"role": "system", "content": stale_msg})
             logger.info("Stale context detected, topic=%s", self._context.current_topic)
 
-        # 1. Parse intent.
-        intent = await self._intent_parser.parse(user_input)
+        # 1. Parse intent (context-aware: resolves pronouns during parsing).
+        intent = await self._intent_parser.parse(user_input, context=self._context)
+
+        # 1a. Handle ambiguous intents — ask for clarification.
+        if intent.ambiguous and intent.candidates:
+            candidates_str = ", ".join(intent.candidates[:3])
+            clarification = (
+                f"I'm not sure what you mean. "
+                f"Did you want: {candidates_str}?"
+            )
+            if self._context.topic_stack:
+                topics = self._context.topic_stack[:3]
+                clarification += f" (Recent topics: {', '.join(topics)})"
+            analysis = AnalysisResult(confidence=0.0, iterations=0)
+            self._history.append({"role": "assistant", "content": clarification})
+            self._log_turn("assistant", clarification)
+            return EngineResponse(text=clarification, intent=intent, analysis=analysis)
 
         # 1b. If no tickers in intent, try resolving from conversation context.
         if not intent.tickers and self._context.current_topic:
@@ -171,6 +186,7 @@ class ConversationEngine:
                 tickers=[resolved],
                 tools=intent.tools,
                 raw_query=intent.raw_query,
+                confidence=intent.confidence,
             )
 
         # 1c. If still no tickers and intent needs them, return clarification.
