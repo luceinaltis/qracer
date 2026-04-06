@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from typing import Any
 
 from tracer.config.models import PortfolioConfig
 from tracer.risk.models import (
@@ -15,8 +16,7 @@ from tracer.risk.models import (
 
 logger = logging.getLogger(__name__)
 
-# Hardcoded sector mapping for initial implementation.
-# Will be replaced by FundamentalProvider lookups later.
+# Hardcoded sector fallback for tickers without a FundamentalProvider.
 _TICKER_SECTOR: dict[str, str] = {
     "AAPL": "Technology",
     "MSFT": "Technology",
@@ -47,17 +47,74 @@ _TICKER_SECTOR: dict[str, str] = {
 }
 
 
+class SectorResolver:
+    """Resolves ticker → sector with dynamic lookup and in-memory cache.
+
+    Tries FundamentalProvider first (if a DataRegistry is available),
+    caches results, and falls back to the hardcoded mapping.
+    """
+
+    def __init__(self, data_registry: Any | None = None) -> None:
+        self._registry = data_registry
+        self._cache: dict[str, str] = {}
+
+    def get_sector(self, ticker: str) -> str:
+        """Return sector for a ticker, using cache → hardcoded fallback."""
+        upper = ticker.upper()
+        if upper in self._cache:
+            return self._cache[upper]
+        sector = _TICKER_SECTOR.get(upper, "Unknown")
+        self._cache[upper] = sector
+        return sector
+
+    async def get_sector_async(self, ticker: str) -> str:
+        """Return sector with async FundamentalProvider lookup + fallback.
+
+        Tries the FundamentalProvider's ``sector`` field first.  On any
+        failure falls back to :meth:`get_sector` (hardcoded + cache).
+        """
+        upper = ticker.upper()
+        if upper in self._cache:
+            return self._cache[upper]
+
+        if self._registry is not None:
+            try:
+                from tracer.data.providers import FundamentalProvider
+
+                data = await self._registry.async_get_with_fallback(
+                    FundamentalProvider, "get_fundamentals", upper
+                )
+                if data.sector:
+                    self._cache[upper] = data.sector
+                    return data.sector
+            except Exception:
+                logger.debug("Dynamic sector lookup failed for %s, using fallback", upper)
+
+        return self.get_sector(upper)
+
+
+# Module-level convenience (backwards-compatible).
+_default_resolver = SectorResolver()
+
+
 def get_sector(ticker: str) -> str:
     """Return sector for a ticker, defaulting to 'Unknown'."""
-    return _TICKER_SECTOR.get(ticker.upper(), "Unknown")
+    return _default_resolver.get_sector(ticker)
 
 
 class RiskCalculator:
     """Builds portfolio snapshots and performs risk calculations."""
 
-    def __init__(self, config: PortfolioConfig, *, peak_value: float = 0.0) -> None:
+    def __init__(
+        self,
+        config: PortfolioConfig,
+        *,
+        peak_value: float = 0.0,
+        sector_resolver: SectorResolver | None = None,
+    ) -> None:
         self._config = config
         self._peak_value = peak_value
+        self._sectors = sector_resolver or _default_resolver
 
     def build_snapshot(self, prices: dict[str, float]) -> PortfolioSnapshot:
         """Build a portfolio snapshot from current prices.
@@ -114,7 +171,7 @@ class RiskCalculator:
         sector_values: dict[str, float] = {}
 
         for h in snapshot.holdings:
-            sector = get_sector(h.ticker)
+            sector = self._sectors.get_sector(h.ticker)
             sector_values[sector] = sector_values.get(sector, 0.0) + h.market_value
 
         total = snapshot.total_value
@@ -142,7 +199,6 @@ class RiskCalculator:
         breached: list[str] = []
         limits = self._config.limits
 
-        # Check single position limits.
         for h in snapshot.holdings:
             if h.weight_pct > limits.max_single_position_pct:
                 breached.append(
@@ -150,7 +206,6 @@ class RiskCalculator:
                     f"max single position limit {limits.max_single_position_pct:.1f}%"
                 )
 
-        # Check sector limits.
         for sector, pct in exposure.sector_weights.items():
             if pct > limits.max_sector_pct:
                 breached.append(
@@ -161,32 +216,15 @@ class RiskCalculator:
         return breached
 
     def size_position(self, ticker: str, conviction: int, snapshot: PortfolioSnapshot) -> float:
-        """Compute position size as % of portfolio based on conviction.
-
-        Conviction mapping:
-            8-10: 3-5% (high conviction)
-            5-7:  1-3% (moderate conviction)
-            1-4:  0.5-1% (low conviction / tracking)
-
-        The allocation is adjusted down if the ticker's sector is near the
-        sector limit. The result never exceeds max_single_position_pct.
-
-        Returns:
-            Allocation as a percentage of portfolio (e.g. 3.0 means 3%).
-        """
-        # Base allocation from conviction.
+        """Compute position size as % of portfolio based on conviction."""
         if conviction >= 8:
-            # Linear interpolation: 8->3%, 9->4%, 10->5%
             base_pct = 3.0 + (conviction - 8) * 1.0
         elif conviction >= 5:
-            # Linear interpolation: 5->1%, 6->2%, 7->3%
             base_pct = 1.0 + (conviction - 5) * 1.0
         else:
-            # Linear interpolation: 1->0.5%, 2->0.67%, 3->0.83%, 4->1.0%
             base_pct = 0.5 + (conviction - 1) * (0.5 / 3)
 
-        # Adjust for sector exposure proximity to limit.
-        sector = get_sector(ticker)
+        sector = self._sectors.get_sector(ticker)
         exposure = self._compute_sector_weight(sector, snapshot)
         sector_limit = self._config.limits.max_sector_pct
         sector_headroom = max(0.0, sector_limit - exposure)
@@ -194,7 +232,6 @@ class RiskCalculator:
         if sector_headroom < base_pct:
             base_pct = sector_headroom
 
-        # Enforce single position cap.
         max_pos = self._config.limits.max_single_position_pct
         if base_pct > max_pos:
             base_pct = max_pos
@@ -205,16 +242,12 @@ class RiskCalculator:
         """Compute the current total weight of a sector in the portfolio."""
         total = 0.0
         for h in snapshot.holdings:
-            if get_sector(h.ticker) == sector:
+            if self._sectors.get_sector(h.ticker) == sector:
                 total += h.weight_pct
         return total
 
     def update_peak(self, current_value: float) -> float:
-        """Update and return the peak portfolio value.
-
-        Call this each time a new snapshot is built.  The peak is tracked
-        in-memory on the calculator instance.
-        """
+        """Update and return the peak portfolio value."""
         if current_value > self._peak_value:
             self._peak_value = current_value
         return self._peak_value
@@ -225,20 +258,13 @@ class RiskCalculator:
         return self._peak_value
 
     def compute_drawdown(self, current_value: float) -> float:
-        """Compute current drawdown as a percentage.
-
-        Returns 0.0 when peak is zero or current value exceeds peak.
-        """
+        """Compute current drawdown as a percentage."""
         if self._peak_value <= 0 or current_value >= self._peak_value:
             return 0.0
         return (self._peak_value - current_value) / self._peak_value * 100.0
 
     def assess(self, prices: dict[str, float]) -> RiskAssessment:
-        """Run a full risk assessment.
-
-        Convenience method that builds snapshot, exposure, checks limits,
-        and evaluates drawdown.
-        """
+        """Run a full risk assessment."""
         snapshot = self.build_snapshot(prices)
         exposure = self.build_exposure(snapshot)
         breached = self.check_limits(snapshot, exposure)

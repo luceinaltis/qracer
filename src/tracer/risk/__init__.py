@@ -1,4 +1,4 @@
-from tracer.risk.calculator import RiskCalculator
+from tracer.risk.calculator import RiskCalculator, SectorResolver
 from tracer.risk.models import (
     ExposureBreakdown,
     HoldingSnapshot,
@@ -12,4 +12,5 @@ __all__ = [
     "PortfolioSnapshot",
     "RiskAssessment",
     "RiskCalculator",
+    "SectorResolver",
 ]
