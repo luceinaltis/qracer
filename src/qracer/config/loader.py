@@ -12,7 +12,6 @@ Merge strategy:
 
 from __future__ import annotations
 
-import logging
 import os
 import sys
 from pathlib import Path
@@ -34,8 +33,6 @@ from qracer.config.models import (
     ProvidersConfig,
     QracerConfig,
 )
-
-logger = logging.getLogger(__name__)
 
 _CONFIG_DIR_NAME = ".qracer"
 _CREDENTIALS_FILE = "credentials.env"
@@ -91,26 +88,24 @@ def resolve_config_dirs() -> list[Path]:
     return [d for d in candidates if d.is_dir()]
 
 
-def _load_toml(path: Path) -> dict[str, Any]:
-    """Read a TOML file, returning an empty dict if not found.
+class ConfigParseError(Exception):
+    """Raised when a TOML configuration file exists but cannot be parsed."""
 
-    Raises a clear warning with the file path and error detail on parse
-    failures so the user can fix the file rather than getting silently
-    empty config.
+
+def _load_toml(path: Path) -> dict[str, Any]:
+    """Read a TOML file, returning an empty dict if missing.
+
+    Raises :class:`ConfigParseError` when the file exists but contains
+    invalid TOML so that callers (and users) get clear feedback instead
+    of silently receiving an empty dict.
     """
     try:
         with open(path, "rb") as f:
             return tomllib.load(f)
     except FileNotFoundError:
         return {}
-    except Exception:
-        logger.error(
-            "Failed to parse %s — config from this file will be ignored. "
-            "Fix the file or delete it and re-run 'qracer install'.",
-            path,
-            exc_info=True,
-        )
-        return {}
+    except Exception as exc:
+        raise ConfigParseError(f"Failed to parse {path}: {exc}") from exc
 
 
 def _merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

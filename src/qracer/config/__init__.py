@@ -1,6 +1,6 @@
 """Configuration system for qracer (.qracer/ directory)."""
 
-from qracer.config.loader import load_config, resolve_config_dirs
+from qracer.config.loader import ConfigParseError, load_config, resolve_config_dirs
 from qracer.config.models import (
     AppConfig,
     Holding,
@@ -12,6 +12,7 @@ from qracer.config.models import (
 )
 
 __all__ = [
+    "ConfigParseError",
     "AppConfig",
     "Holding",
     "PortfolioConfig",
