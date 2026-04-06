@@ -6,7 +6,7 @@ from pathlib import Path
 
 import duckdb
 
-DEFAULT_DB_PATH = "tracer.db"
+DEFAULT_DB_PATH = "qracer.db"
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS prices (
@@ -53,7 +53,7 @@ class TracerDB:
     Usage::
 
         db = TracerDB()          # in-memory
-        db = TracerDB("tracer.db")  # file-backed
+        db = TracerDB("qracer.db")  # file-backed
         conn = db.connection
         db.close()
     """

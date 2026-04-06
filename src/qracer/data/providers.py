@@ -33,6 +33,7 @@ class FundamentalData:
     revenue: float | None = None
     earnings: float | None = None
     dividend_yield: float | None = None
+    sector: str | None = None
     fetched_at: datetime | None = None
 
 

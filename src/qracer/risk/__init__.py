@@ -1,4 +1,4 @@
-from qracer.risk.calculator import RiskCalculator
+from qracer.risk.calculator import RiskCalculator, SectorResolver
 from qracer.risk.models import (
     ExposureBreakdown,
     HoldingSnapshot,
@@ -12,4 +12,5 @@ __all__ = [
     "PortfolioSnapshot",
     "RiskAssessment",
     "RiskCalculator",
+    "SectorResolver",
 ]

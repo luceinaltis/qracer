@@ -10,23 +10,17 @@ from helpers import make_mock_llm_registry as _mock_llm_registry
 from helpers import ok_result as _ok_result
 
 from qracer.config.models import Holding, PortfolioConfig
-from qracer.conversation.engine import (
-    AnalysisLoop,
-    AnalysisResult,
-    ComparisonSynthesizer,
-    ConversationEngine,
-    EngineResponse,
-    ResponseSynthesizer,
-    _invoke_tool,
-    _invoke_tools,
-)
+from qracer.conversation.analysis_loop import AnalysisLoop, AnalysisResult
+from qracer.conversation.dispatcher import invoke_tool, invoke_tools
+from qracer.conversation.engine import ConversationEngine, EngineResponse
 from qracer.conversation.intent import Intent, IntentType
+from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynthesizer
 from qracer.data.registry import DataRegistry
 from qracer.llm.providers import Role
 from qracer.llm.registry import LLMRegistry
 
 # ---------------------------------------------------------------------------
-# _invoke_tool / _invoke_tools
+# invoke_tool / invoke_tools
 # ---------------------------------------------------------------------------
 
 
@@ -34,64 +28,64 @@ class TestInvokeTool:
     async def test_price_event_with_ticker(self) -> None:
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
         registry = DataRegistry()
-        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.dispatcher.pipeline") as mock_pipeline:
             mock_pipeline.price_event = AsyncMock(return_value=_ok_result("price_event"))
-            result = await _invoke_tool("price_event", intent, registry)
+            result = await invoke_tool("price_event", intent, registry)
             assert result.success
             mock_pipeline.price_event.assert_called_once_with("AAPL", registry)
 
     async def test_news_with_ticker(self) -> None:
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["TSLA"], raw_query="test")
         registry = DataRegistry()
-        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.dispatcher.pipeline") as mock_pipeline:
             mock_pipeline.news = AsyncMock(return_value=_ok_result("news"))
-            result = await _invoke_tool("news", intent, registry)
+            result = await invoke_tool("news", intent, registry)
             assert result.success
 
     async def test_cross_market_passes_all_tickers(self) -> None:
         intent = Intent(IntentType.CROSS_MARKET, tickers=["AAPL", "TSLA"], raw_query="test")
         registry = DataRegistry()
-        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.dispatcher.pipeline") as mock_pipeline:
             mock_pipeline.cross_market = AsyncMock(return_value=_ok_result("cross_market"))
-            await _invoke_tool("cross_market", intent, registry)
+            await invoke_tool("cross_market", intent, registry)
             mock_pipeline.cross_market.assert_called_once_with(["AAPL", "TSLA"], registry)
 
     async def test_macro_uses_raw_query(self) -> None:
         intent = Intent(IntentType.MACRO_QUERY, raw_query="inflation rate")
         registry = DataRegistry()
-        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.dispatcher.pipeline") as mock_pipeline:
             mock_pipeline.macro = AsyncMock(return_value=_ok_result("macro"))
-            await _invoke_tool("macro", intent, registry)
+            await invoke_tool("macro", intent, registry)
             mock_pipeline.macro.assert_called_once_with("inflation rate", registry)
 
     async def test_memory_search(self) -> None:
         intent = Intent(IntentType.FOLLOW_UP, raw_query="what about before?")
         registry = DataRegistry()
-        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.dispatcher.pipeline") as mock_pipeline:
             mock_pipeline.memory_search = AsyncMock(return_value=_ok_result("memory_search"))
-            await _invoke_tool("memory_search", intent, registry)
+            await invoke_tool("memory_search", intent, registry)
             mock_pipeline.memory_search.assert_called_once_with("what about before?")
 
     async def test_tool_without_tickers_returns_failure(self) -> None:
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=[], raw_query="test")
         registry = DataRegistry()
-        result = await _invoke_tool("price_event", intent, registry)
+        result = await invoke_tool("price_event", intent, registry)
         assert not result.success
         assert result.error is not None and "no tickers" in result.error
 
     async def test_invoke_tools_concurrent(self) -> None:
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
         registry = DataRegistry()
-        with patch("qracer.conversation.engine.pipeline") as mock_pipeline:
+        with patch("qracer.conversation.dispatcher.pipeline") as mock_pipeline:
             mock_pipeline.price_event = AsyncMock(return_value=_ok_result("price_event"))
             mock_pipeline.news = AsyncMock(return_value=_ok_result("news"))
-            results = await _invoke_tools(["price_event", "news"], intent, registry)
+            results = await invoke_tools(["price_event", "news"], intent, registry)
             assert len(results) == 2
             assert all(r.success for r in results)
 
     async def test_invoke_tools_empty_list(self) -> None:
         intent = Intent(IntentType.FOLLOW_UP, raw_query="ok")
-        results = await _invoke_tools([], intent, DataRegistry())
+        results = await invoke_tools([], intent, DataRegistry())
         assert results == []
 
 
@@ -127,7 +121,7 @@ class TestAnalysisLoop:
         loop = AnalysisLoop(llm, data)
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
 
-        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("news")]
             result = await loop.run(intent, [_ok_result("price_event")])
 
@@ -144,7 +138,7 @@ class TestAnalysisLoop:
         loop = AnalysisLoop(llm, data, max_iterations=2)
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
 
-        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("news")]
             result = await loop.run(intent, [_ok_result("price_event")])
 
@@ -271,7 +265,7 @@ class TestConversationEngine:
 
         engine = ConversationEngine(llm, data)
 
-        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("price_event"), _ok_result("news")]
             response = await engine.query("Why did AAPL spike 5% today?")
 
@@ -296,7 +290,7 @@ class TestConversationEngine:
 
         engine = ConversationEngine(llm, DataRegistry())
 
-        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("macro")]
             await engine.query("Where are we in the rate cycle?")
 
@@ -335,7 +329,7 @@ class TestConversationEngine:
         engine = ConversationEngine(llm, DataRegistry(), portfolio_config=portfolio)
 
         with (
-            patch("qracer.conversation.engine._invoke_tools") as mock_invoke,
+            patch("qracer.conversation.engine.invoke_tools") as mock_invoke,
             patch("qracer.conversation.engine.pipeline.risk_check") as mock_risk,
         ):
             mock_invoke.return_value = [_ok_result("price_event")]
@@ -383,7 +377,7 @@ class TestConversationEngine:
         engine = ConversationEngine(llm, DataRegistry())
 
         with (
-            patch("qracer.conversation.engine._invoke_tools") as mock_invoke,
+            patch("qracer.conversation.engine.invoke_tools") as mock_invoke,
             patch("qracer.conversation.engine.pipeline.risk_check") as mock_risk,
         ):
             mock_invoke.return_value = [_ok_result("price_event")]
@@ -412,7 +406,7 @@ class TestConversationEngine:
         engine = ConversationEngine(llm, DataRegistry(), portfolio_config=portfolio)
 
         with (
-            patch("qracer.conversation.engine._invoke_tools") as mock_invoke,
+            patch("qracer.conversation.engine.invoke_tools") as mock_invoke,
             patch("qracer.conversation.engine.pipeline.risk_check") as mock_risk,
         ):
             mock_invoke.return_value = [_ok_result("price_event")]
@@ -435,7 +429,7 @@ class TestConversationEngine:
             confidence_threshold=0.9,
         )
 
-        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
             mock_invoke.return_value = []
             response = await engine.query("test")
 
@@ -514,7 +508,7 @@ class TestConversationEngineComparison:
         llm = _mock_llm_registry({Role.RESEARCHER: intent_resp, Role.STRATEGIST: comparison_resp})
         engine = ConversationEngine(llm, DataRegistry())
 
-        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("price_event"), _ok_result("fundamentals")]
             response = await engine.query("Compare AAPL and MSFT")
 
@@ -537,9 +531,93 @@ class TestConversationEngineComparison:
         )
         engine = ConversationEngine(llm, DataRegistry())
 
-        with patch("qracer.conversation.engine._invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("price_event")]
             response = await engine.query("Compare AAPL")
 
         assert response.intent.intent_type == IntentType.COMPARISON
         assert "ANALYSIS" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Session logging integration
+# ---------------------------------------------------------------------------
+
+
+class TestSessionLogging:
+    async def test_query_logs_user_and_assistant_turns(self, tmp_path) -> None:
+        """Engine should log user input and assistant response to SessionLogger."""
+        from qracer.memory.session_logger import SessionLogger
+
+        log_path = tmp_path / "test.jsonl"
+        session_logger = SessionLogger(log_path)
+
+        intent_resp = json.dumps({"intent": "macro_query", "tickers": []})
+        analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: intent_resp,
+                Role.ANALYST: analysis_resp,
+                Role.STRATEGIST: "Response text",
+            }
+        )
+        engine = ConversationEngine(llm, DataRegistry(), session_logger=session_logger)
+
+        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+            mock_invoke.return_value = []
+            await engine.query("What is inflation?")
+
+        turns = session_logger.read_all()
+        assert len(turns) >= 2
+        assert turns[0].role == "user"
+        assert turns[0].content == "What is inflation?"
+        assert turns[-1].role == "assistant"
+
+    async def test_turn_counter_increments(self, tmp_path) -> None:
+        """Turn counter should increment across multiple queries."""
+        from qracer.memory.session_logger import SessionLogger
+
+        log_path = tmp_path / "test.jsonl"
+        session_logger = SessionLogger(log_path)
+
+        intent_resp = json.dumps({"intent": "macro_query", "tickers": []})
+        analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: [intent_resp, intent_resp],
+                Role.ANALYST: [analysis_resp, analysis_resp],
+                Role.STRATEGIST: ["Response 1", "Response 2"],
+            }
+        )
+        engine = ConversationEngine(llm, DataRegistry(), session_logger=session_logger)
+
+        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+            mock_invoke.return_value = []
+            await engine.query("Query 1")
+            await engine.query("Query 2")
+
+        turns = session_logger.read_all()
+        turn_numbers = [t.turn for t in turns]
+        assert turn_numbers == [1, 2, 3, 4]  # user1, assistant1, user2, assistant2
+
+    async def test_no_logging_without_session_logger(self) -> None:
+        """Engine without session_logger should work normally without errors."""
+        intent_resp = json.dumps({"intent": "macro_query", "tickers": []})
+        analysis_resp = json.dumps({"confidence": 0.85, "missing_tools": []})
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: intent_resp,
+                Role.ANALYST: analysis_resp,
+                Role.STRATEGIST: "Response",
+            }
+        )
+        engine = ConversationEngine(llm, DataRegistry())  # no session_logger
+
+        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+            mock_invoke.return_value = []
+            response = await engine.query("Test query")
+
+        assert response.text == "Response"
