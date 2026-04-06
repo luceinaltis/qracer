@@ -423,18 +423,31 @@ async def risk_check(
         )
 
 
-async def memory_search(query: str, **kwargs: object) -> ToolResult:
+async def memory_search(query: str, searcher: Any = None, **kwargs: object) -> ToolResult:
     """Search past analyses stored in session memory.
 
-    This is a placeholder — the full implementation depends on the SessionManager
-    and memory system which are built in later layers.
+    If a MemorySearcher instance is provided, performs a real FTS search.
+    Otherwise returns empty results (graceful degradation).
     """
-    now = datetime.now()
-    return ToolResult(
-        tool="memory_search",
-        success=True,
-        data={"query": query, "results": []},
-        source="SessionMemory",
-        fetched_at=now,
-        is_stale=False,
-    )
+
+    async def _fetch() -> dict[str, Any]:
+        if searcher is None:
+            return {"query": query, "results": []}
+
+        try:
+            results = searcher.search(query, limit=5)
+            return {
+                "query": query,
+                "results": [
+                    {
+                        "session_id": r.session_id,
+                        "summary": r.summary[:500],
+                        "score": r.score,
+                    }
+                    for r in results
+                ],
+            }
+        except Exception:
+            return {"query": query, "results": []}
+
+    return await _run_tool("memory_search", "SessionMemory", _fetch, label=query, stale_check=False)

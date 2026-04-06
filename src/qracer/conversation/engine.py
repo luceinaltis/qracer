@@ -60,6 +60,7 @@ class ConversationEngine:
         confidence_threshold: float = CONFIDENCE_THRESHOLD,
         session_logger: SessionLogger | None = None,
         report_dir: Path | None = None,
+        memory_searcher: object | None = None,
     ) -> None:
         if data_registry is None:
             data_registry = build_registry()
@@ -79,6 +80,7 @@ class ConversationEngine:
         self._session_logger = session_logger
         self._compactor = SessionCompactor(llm_registry) if session_logger else None
         self._report_exporter = ReportExporter(report_dir) if report_dir else None
+        self._memory_searcher = memory_searcher
         self._context: ConversationContext = ConversationContext()
         self._turn_counter = 0
         self._last_response: EngineResponse | None = None
@@ -182,7 +184,10 @@ class ConversationEngine:
             for ticker in intent.tickers
         ]
         gathered = await asyncio.gather(
-            *[invoke_tools(si.tools, si, self._data) for si in single_intents]
+            *[
+                invoke_tools(si.tools, si, self._data, memory_searcher=self._memory_searcher)
+                for si in single_intents
+            ]
         )
         per_ticker_results: dict[str, list[ToolResult]] = dict(zip(intent.tickers, gathered))
         all_results = [r for results in per_ticker_results.values() for r in results]
@@ -196,7 +201,9 @@ class ConversationEngine:
     async def _handle_standard(self, intent: Intent) -> EngineResponse:
         """Run the standard analysis pipeline (DeepPath)."""
         # Invoke initial pipeline tools.
-        initial_results = await invoke_tools(intent.tools, intent, self._data)
+        initial_results = await invoke_tools(
+            intent.tools, intent, self._data, memory_searcher=self._memory_searcher
+        )
 
         # Run analysis loop.
         analysis = await self._analysis_loop.run(intent, initial_results)
