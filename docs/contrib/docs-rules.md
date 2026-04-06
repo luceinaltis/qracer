@@ -22,7 +22,7 @@ Every doc file must have:
 
 ## Consistency with AGENTS.md
 
-- If a doc references a project structure directory (e.g., `src/tracer/conversation/`), it must exist in the AGENTS.md Project Structure tree.
+- If a doc references a project structure directory (e.g., `src/qracer/conversation/`), it must exist in the AGENTS.md Project Structure tree.
 - If a doc defines LLM roles or data capabilities, they must match the definitions in AGENTS.md or the authoritative doc (`conversational-layer.md` for roles, `architecture.md` for capabilities).
 - Tech stack versions (Python, tools) must not contradict AGENTS.md.
 

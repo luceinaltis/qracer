@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tracer.memory.memory_searcher import MemorySearcher
+from qracer.memory.memory_searcher import MemorySearcher
 
 
 @pytest.fixture

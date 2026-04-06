@@ -2,18 +2,18 @@
 name: add-llm-provider
 description: >
   Guide for implementing a new LLM provider. Use when adding support for a new
-  LLM (e.g., OpenAI, Gemini, local models) to the Tracer system. Ensures the
+  LLM (e.g., OpenAI, Gemini, local models) to the qracer system. Ensures the
   provider follows the abstraction interface and handles prompt differences.
 ---
 
 # Add LLM Provider
 
-Step-by-step guide for adding a new LLM to Tracer.
+Step-by-step guide for adding a new LLM to qracer.
 
 ## Before You Start
 
 - Read `docs/architecture.md` for LLM abstraction design.
-- Read `src/tracer/llm/base.py` for the LLMProvider interface (once implemented).
+- Read `src/qracer/llm/base.py` for the LLMProvider interface (once implemented).
 - Understand the role system: researcher, analyst, strategist, reporter.
 
 ## Key Design Decisions
@@ -22,10 +22,10 @@ Step-by-step guide for adding a new LLM to Tracer.
 Different models respond differently to the same prompt. When adding a provider:
 - Test with existing prompts first.
 - If quality is poor, create model-specific prompt templates.
-- Store in `src/tracer/llm/prompts/{provider_name}/` if needed.
+- Store in `src/qracer/llm/prompts/{provider_name}/` if needed.
 
 ### Structured Output
-Tracer agents expect structured responses (JSON, typed objects). Ensure:
+qracer agents expect structured responses (JSON, typed objects). Ensure:
 - The provider supports structured output (function calling, JSON mode, etc.)
 - Fallback: parse unstructured text if structured mode unavailable.
 
@@ -37,7 +37,7 @@ Tracer agents expect structured responses (JSON, typed objects). Ensure:
    - Streaming support (optional but recommended)
 
 2. **Create provider file**
-   - Path: `src/tracer/llm/{provider_name}.py`
+   - Path: `src/qracer/llm/{provider_name}.py`
    - Implement `LLMProvider` interface from `base.py`
    - All calls must be `async`
    - Handle rate limiting and retries
@@ -61,7 +61,7 @@ Tracer agents expect structured responses (JSON, typed objects). Ensure:
 ## Implementation Template
 
 ```python
-from tracer.llm.base import LLMProvider, LLMResponse, Message
+from qracer.llm.base import LLMProvider, LLMResponse, Message
 
 
 class MyNewLLM(LLMProvider):
@@ -87,5 +87,5 @@ class MyNewLLM(LLMProvider):
 - [ ] Structured output works for agent roles
 - [ ] Rate limiting handled
 - [ ] Tests pass: `pytest tests/llm/test_{provider_name}.py`
-- [ ] Type check passes: `pyright src/tracer/llm/{provider_name}.py`
+- [ ] Type check passes: `pyright src/qracer/llm/{provider_name}.py`
 - [ ] `docs/architecture.md` updated

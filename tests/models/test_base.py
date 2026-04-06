@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest
 
-from tracer.models import Region, Report, Sector, Signal, SignalDirection, Stock, ToolResult
+from qracer.models import Region, Report, Sector, Signal, SignalDirection, Stock, ToolResult
 
 
 class TestStock:

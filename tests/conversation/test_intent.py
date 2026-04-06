@@ -8,15 +8,15 @@ from unittest.mock import AsyncMock
 import pytest
 from helpers import make_single_role_registry
 
-from tracer.conversation.intent import (
+from qracer.conversation.intent import (
     INTENT_TOOL_MAP,
     Intent,
     IntentParser,
     IntentType,
     _extract_tickers,
 )
-from tracer.llm.providers import Role
-from tracer.llm.registry import LLMRegistry
+from qracer.llm.providers import Role
+from qracer.llm.registry import LLMRegistry
 
 # ---------------------------------------------------------------------------
 # Intent dataclass

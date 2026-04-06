@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tracer.config.models import Holding, PortfolioConfig, PortfolioLimits
-from tracer.models import TradeThesis
-from tracer.risk.calculator import RiskCalculator, SectorResolver, get_sector
-from tracer.risk.models import PortfolioSnapshot
+from qracer.config.models import Holding, PortfolioConfig, PortfolioLimits
+from qracer.models import TradeThesis
+from qracer.risk.calculator import RiskCalculator, SectorResolver, get_sector
+from qracer.risk.models import PortfolioSnapshot
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -235,7 +235,7 @@ class TestSizePosition:
 class TestRiskCheckPipeline:
     @pytest.mark.asyncio
     async def test_risk_check_success(self, portfolio_config: PortfolioConfig) -> None:
-        from tracer.tools.pipeline import risk_check
+        from qracer.tools.pipeline import risk_check
 
         # Mock registry with a PriceProvider.
         mock_provider = AsyncMock()
@@ -268,7 +268,7 @@ class TestRiskCheckPipeline:
 
     @pytest.mark.asyncio
     async def test_risk_check_with_empty_portfolio(self) -> None:
-        from tracer.tools.pipeline import risk_check
+        from qracer.tools.pipeline import risk_check
 
         config = PortfolioConfig(currency="USD", holdings=[])
         mock_registry = MagicMock()
@@ -404,7 +404,7 @@ class TestSectorResolver:
         assert sector == "Technology"
 
     async def test_async_dynamic_lookup(self) -> None:
-        from tracer.data.providers import FundamentalData
+        from qracer.data.providers import FundamentalData
 
         mock_registry = MagicMock()
 
@@ -419,7 +419,7 @@ class TestSectorResolver:
         assert resolver._cache["ZZZZ"] == "Industrials"
 
     async def test_async_no_sector_falls_back(self) -> None:
-        from tracer.data.providers import FundamentalData
+        from qracer.data.providers import FundamentalData
 
         mock_registry = MagicMock()
 

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 
-from tracer.conversation.analysis_loop import AnalysisResult
-from tracer.conversation.intent import Intent, IntentType
-from tracer.conversation.report_exporter import ReportExporter
-from tracer.models import ToolResult, TradeThesis
+from qracer.conversation.analysis_loop import AnalysisResult
+from qracer.conversation.intent import Intent, IntentType
+from qracer.conversation.report_exporter import ReportExporter
+from qracer.models import ToolResult, TradeThesis
 
 
 def _intent(tickers: list[str] | None = None) -> Intent:

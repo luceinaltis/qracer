@@ -53,7 +53,7 @@ Data providers and LLM providers register capabilities via a **Registry pattern*
 ## Project Structure
 
 ```text
-src/tracer/
+src/qracer/
 ├── agents/        # LLM agent roles (researcher, analyst, strategist, reporter)
 ├── config/        # .qracer/ config loading and models
 ├── conversation/  # Intent parsing, context tracking, engine orchestration
@@ -91,7 +91,7 @@ uv run ruff format .
 uv run pyright
 
 # Test with coverage (80% minimum)
-uv run pytest --cov=src/tracer --cov-report=term-missing --cov-fail-under=80
+uv run pytest --cov=src/qracer --cov-report=term-missing --cov-fail-under=80
 ```
 
 ## Tech Stack

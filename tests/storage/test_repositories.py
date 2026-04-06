@@ -7,10 +7,10 @@ from datetime import date, datetime
 
 import pytest
 
-from tracer.data.providers import OHLCV
-from tracer.models.base import Report, Signal, SignalDirection
-from tracer.storage.database import TracerDB
-from tracer.storage.repositories import PriceRepository, ReportRepository, SignalRepository
+from qracer.data.providers import OHLCV
+from qracer.models.base import Report, Signal, SignalDirection
+from qracer.storage.database import TracerDB
+from qracer.storage.repositories import PriceRepository, ReportRepository, SignalRepository
 
 
 @pytest.fixture

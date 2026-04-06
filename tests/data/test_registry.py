@@ -7,15 +7,15 @@ from unittest.mock import patch
 
 import pytest
 
-from tracer.data import DataRegistry, PriceProvider
-from tracer.data.providers import (
+from qracer.data import DataRegistry, PriceProvider
+from qracer.data.providers import (
     OHLCV,
     FundamentalData,
     FundamentalProvider,
     MacroIndicator,
     MacroProvider,
 )
-from tracer.data.registry import build_registry as _build_registry
+from qracer.data.registry import build_registry as _build_registry
 
 
 class FakePriceAdapter:
@@ -264,7 +264,7 @@ class TestBuildRegistry:
             {"yfinance": _make_provider_cfg(enabled=True, priority=100, tier="hot")}
         )
 
-        with patch("tracer.data.registry._load_config_lazy", return_value=mock_config):
+        with patch("qracer.data.registry._load_config_lazy", return_value=mock_config):
             registry = _build_registry()
 
         # YfinanceAdapter should be registered for PriceProvider
@@ -278,7 +278,7 @@ class TestBuildRegistry:
             {"yfinance": _make_provider_cfg(enabled=False, priority=100, tier="hot")}
         )
 
-        with patch("tracer.data.registry._load_config_lazy", return_value=mock_config):
+        with patch("qracer.data.registry._load_config_lazy", return_value=mock_config):
             registry = _build_registry()
 
         assert registry.get_all(PriceProvider) == []
@@ -289,14 +289,14 @@ class TestBuildRegistry:
             {"unknown_source": _make_provider_cfg(enabled=True, priority=50)}
         )
 
-        with patch("tracer.data.registry._load_config_lazy", return_value=mock_config):
+        with patch("qracer.data.registry._load_config_lazy", return_value=mock_config):
             registry = _build_registry()
 
         assert registry.capabilities() == []
 
     def test_build_empty_config(self) -> None:
         """Empty providers config returns empty registry."""
-        with patch("tracer.data.registry._load_config_lazy", return_value=_make_config()):
+        with patch("qracer.data.registry._load_config_lazy", return_value=_make_config()):
             registry = _build_registry()
 
         assert registry.capabilities() == []
@@ -307,7 +307,7 @@ class TestBuildRegistry:
             {"yfinance": _make_provider_cfg(enabled=True, priority=50, tier="warm")}
         )
 
-        with patch("tracer.data.registry._load_config_lazy", return_value=mock_config):
+        with patch("qracer.data.registry._load_config_lazy", return_value=mock_config):
             registry = _build_registry()
 
         adapters = registry.get_all(PriceProvider)

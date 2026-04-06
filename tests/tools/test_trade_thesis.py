@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock
 import pytest
 from helpers import make_single_role_registry, sample_analysis_results
 
-from tracer.llm.providers import Role
-from tracer.llm.registry import LLMRegistry
-from tracer.models import TradeThesis
-from tracer.tools.pipeline import trade_thesis
+from qracer.llm.providers import Role
+from qracer.llm.registry import LLMRegistry
+from qracer.models import TradeThesis
+from qracer.tools.pipeline import trade_thesis
 
 _VALID_LLM_RESPONSE = json.dumps(
     {

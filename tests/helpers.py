@@ -10,17 +10,17 @@ from __future__ import annotations
 from datetime import date, datetime
 from unittest.mock import AsyncMock
 
-from tracer.data.providers import (
+from qracer.data.providers import (
     OHLCV,
     FundamentalData,
     MacroIndicator,
     NewsArticle,
 )
-from tracer.data.registry import DataRegistry
-from tracer.llm.providers import CompletionRequest, CompletionResponse, Role
-from tracer.llm.registry import LLMRegistry
-from tracer.memory.session_logger import TurnRecord
-from tracer.models import ToolResult
+from qracer.data.registry import DataRegistry
+from qracer.llm.providers import CompletionRequest, CompletionResponse, Role
+from qracer.llm.registry import LLMRegistry
+from qracer.memory.session_logger import TurnRecord
+from qracer.models import ToolResult
 
 # ---------------------------------------------------------------------------
 # Fake LLM providers
@@ -110,7 +110,7 @@ def make_llm_registry(content: str = "[]") -> tuple[LLMRegistry, FakeLLM]:
 
 def make_data_registry() -> DataRegistry:
     """Create a DataRegistry with all fake providers registered."""
-    from tracer.data.providers import (
+    from qracer.data.providers import (
         FundamentalProvider,
         MacroProvider,
         NewsProvider,

@@ -48,7 +48,7 @@ jobs:
         run: uv sync
 
       - name: Run tests with coverage
-        run: uv run pytest --cov=src/tracer --cov-report=term-missing --cov-fail-under=80
+        run: uv run pytest --cov=src/qracer --cov-report=term-missing --cov-fail-under=80
 
       - name: Upload coverage report
         if: always()

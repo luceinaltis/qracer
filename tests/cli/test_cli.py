@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from tracer.cli import main
+from qracer.cli import main
 
 
 class TestHelp:
@@ -32,7 +32,7 @@ class TestInstall:
         home_dir = tmp_path / ".qracer"
         runner = CliRunner()
 
-        with patch("tracer.cli._user_dir", return_value=home_dir):
+        with patch("qracer.cli._user_dir", return_value=home_dir):
             result = runner.invoke(main, ["install"], input="\n\n\n\nUSD\n")
 
         assert result.exit_code == 0
@@ -49,7 +49,7 @@ class TestInstall:
         (home_dir / "config.toml").write_text("existing")
 
         runner = CliRunner()
-        with patch("tracer.cli._user_dir", return_value=home_dir):
+        with patch("qracer.cli._user_dir", return_value=home_dir):
             result = runner.invoke(main, ["install"], input="\n\n\n\nUSD\n")
 
         assert result.exit_code == 0
@@ -61,7 +61,7 @@ class TestInstall:
         home_dir = tmp_path / ".qracer"
         runner = CliRunner()
 
-        with patch("tracer.cli._user_dir", return_value=home_dir):
+        with patch("qracer.cli._user_dir", return_value=home_dir):
             result = runner.invoke(main, ["install"], input="mykey123\n\n\n\nUSD\n")
 
         assert result.exit_code == 0
@@ -72,7 +72,7 @@ class TestInstall:
         home_dir = tmp_path / ".qracer"
         runner = CliRunner()
 
-        with patch("tracer.cli._user_dir", return_value=home_dir):
+        with patch("qracer.cli._user_dir", return_value=home_dir):
             result = runner.invoke(main, ["install"], input="\n\n\n\nEUR\n")
 
         assert result.exit_code == 0
@@ -83,7 +83,7 @@ class TestInstall:
 class TestStatus:
     def test_status_no_config(self) -> None:
         runner = CliRunner()
-        with patch("tracer.cli.resolve_config_dirs", return_value=[]):
+        with patch("qracer.cli.resolve_config_dirs", return_value=[]):
             result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0
@@ -95,10 +95,10 @@ class TestStatus:
 
         runner = CliRunner()
         with (
-            patch("tracer.cli.resolve_config_dirs", return_value=[config_dir]),
-            patch("tracer.cli.load_config") as mock_load,
+            patch("qracer.cli.resolve_config_dirs", return_value=[config_dir]),
+            patch("qracer.cli.load_config") as mock_load,
         ):
-            from tracer.config.models import (
+            from qracer.config.models import (
                 PortfolioConfig,
                 ProviderConfig,
                 ProvidersConfig,
@@ -124,8 +124,8 @@ class TestStatus:
 class TestConfig:
     def test_config_show(self) -> None:
         runner = CliRunner()
-        with patch("tracer.cli.load_config") as mock_load:
-            from tracer.config.models import QracerConfig
+        with patch("qracer.cli.load_config") as mock_load:
+            from qracer.config.models import QracerConfig
 
             mock_load.return_value = QracerConfig()
             result = runner.invoke(main, ["config"])
@@ -139,7 +139,7 @@ class TestConfig:
         (home_dir / "config.toml").write_text('default_mode = "quick"\n')
 
         runner = CliRunner()
-        with patch("tracer.cli._user_dir", return_value=home_dir):
+        with patch("qracer.cli._user_dir", return_value=home_dir):
             result = runner.invoke(main, ["config", "--set", "default_mode=deep"])
 
         assert result.exit_code == 0
@@ -153,7 +153,7 @@ class TestConfig:
         home_dir.mkdir()
         (home_dir / "config.toml").write_text("")
 
-        with patch("tracer.cli._user_dir", return_value=home_dir):
+        with patch("qracer.cli._user_dir", return_value=home_dir):
             result = runner.invoke(main, ["config", "--set", "noequals"])
 
         assert result.exit_code != 0
@@ -163,7 +163,7 @@ class TestConfig:
         home_dir.mkdir()  # No config.toml
 
         runner = CliRunner()
-        with patch("tracer.cli._user_dir", return_value=home_dir):
+        with patch("qracer.cli._user_dir", return_value=home_dir):
             result = runner.invoke(main, ["config", "--set", "key=val"])
 
         assert result.exit_code != 0
