@@ -25,12 +25,12 @@ priority = 50
 kind = "llm"
 api_key_env = "GOOGLE_API_KEY"
 
-# [providers.finnhub]
-# enabled = false
-# priority = 50
-# tier = "warm"
-# kind = "data"
-# api_key_env = "FINNHUB_API_KEY"
+[providers.finnhub]
+enabled = false
+priority = 50
+tier = "warm"
+kind = "data"
+api_key_env = "FINNHUB_API_KEY"
 
 # [providers.fred]
 # enabled = false

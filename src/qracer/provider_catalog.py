@@ -10,10 +10,14 @@ from __future__ import annotations
 BUILTIN_DATA_PROVIDERS: dict[str, tuple[str, list[str]]] = {
     "yfinance": (
         "qracer.data.yfinance_adapter.YfinanceAdapter",
+        ["qracer.data.providers.PriceProvider"],
+    ),
+    "finnhub": (
+        "qracer.data.finnhub_adapter.FinnhubAdapter",
         [
-            "qracer.data.providers.PriceProvider",
             "qracer.data.providers.FundamentalProvider",
             "qracer.data.providers.NewsProvider",
+            "qracer.data.providers.AlternativeProvider",
         ],
     ),
 }
