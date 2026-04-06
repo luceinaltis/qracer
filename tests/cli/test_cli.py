@@ -33,8 +33,8 @@ class TestInstall:
         runner = CliRunner()
 
         with patch("qracer.cli._user_dir", return_value=home_dir):
-            # 3 credential prompts (ANTHROPIC, OPENAI, GOOGLE) + currency
-            result = runner.invoke(main, ["install"], input="\n\n\nUSD\n")
+            # Choice=1 (Claude), skip API key, currency=USD
+            result = runner.invoke(main, ["install"], input="1\n\nUSD\n")
 
         assert result.exit_code == 0
         assert home_dir.is_dir()
@@ -51,7 +51,7 @@ class TestInstall:
 
         runner = CliRunner()
         with patch("qracer.cli._user_dir", return_value=home_dir):
-            result = runner.invoke(main, ["install"], input="\n\n\nUSD\n")
+            result = runner.invoke(main, ["install"], input="1\n\nUSD\n")
 
         assert result.exit_code == 0
         assert "already exists" in result.output
@@ -63,8 +63,8 @@ class TestInstall:
         runner = CliRunner()
 
         with patch("qracer.cli._user_dir", return_value=home_dir):
-            # First prompt is ANTHROPIC_API_KEY, skip OPENAI and GOOGLE
-            result = runner.invoke(main, ["install"], input="sk-ant-key123\n\n\nUSD\n")
+            # Choice=1 (Claude), enter API key
+            result = runner.invoke(main, ["install"], input="1\nsk-ant-key123\nUSD\n")
 
         assert result.exit_code == 0
         creds = (home_dir / "credentials.env").read_text()
@@ -75,12 +75,34 @@ class TestInstall:
         runner = CliRunner()
 
         with patch("qracer.cli._user_dir", return_value=home_dir):
-            # Skip all credential prompts, set currency to EUR
-            result = runner.invoke(main, ["install"], input="\n\n\nEUR\n")
+            # Choice=1 (Claude), skip API key, currency=EUR
+            result = runner.invoke(main, ["install"], input="1\n\nEUR\n")
 
         assert result.exit_code == 0
         portfolio = (home_dir / "portfolio.toml").read_text(encoding="utf-8")
         assert 'currency = "EUR"' in portfolio
+
+    def test_install_selects_openai(self, tmp_path: Path) -> None:
+        home_dir = tmp_path / ".qracer"
+        runner = CliRunner()
+
+        with patch("qracer.cli._user_dir", return_value=home_dir):
+            # Choice=2 (OpenAI), enter API key
+            result = runner.invoke(main, ["install"], input="2\nsk-openai-key\nUSD\n")
+
+        assert result.exit_code == 0
+        # Credentials should have OPENAI_API_KEY
+        creds = (home_dir / "credentials.env").read_text()
+        assert "OPENAI_API_KEY=sk-openai-key" in creds
+        # providers.toml should have openai enabled, claude disabled
+        assert "OpenAI" in result.output
+        # Verify provider enablement via config loading
+        import tomllib
+
+        with open(home_dir / "providers.toml", "rb") as f:
+            data = tomllib.load(f)
+        assert data["providers"]["openai"]["enabled"] is True
+        assert data["providers"]["claude"]["enabled"] is False
 
 
 class TestStatus:
