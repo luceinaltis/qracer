@@ -43,6 +43,7 @@ def main(ctx: click.Context) -> None:
 # qracer install
 # ---------------------------------------------------------------------------
 
+
 def _collect_credential_prompts() -> list[tuple[str, str]]:
     """Collect credential prompts from providers.toml (api_key_env fields).
 
@@ -160,9 +161,7 @@ def status() -> None:
     if llm_providers:
         for name, prov in llm_providers.items():
             env_key = prov.api_key_env
-            has_key = bool(
-                env_key and (cfg.credentials.get(env_key) or os.environ.get(env_key))
-            )
+            has_key = bool(env_key and (cfg.credentials.get(env_key) or os.environ.get(env_key)))
             if not prov.enabled:
                 click.echo(f"  {name}: disabled")
             elif has_key:
@@ -289,9 +288,8 @@ def _build_registries() -> tuple:  # type: ignore[type-arg]
                 # Inject API key from credentials if declared
                 api_key = None
                 if prov_cfg.api_key_env:
-                    api_key = (
-                        config.credentials.get(prov_cfg.api_key_env)
-                        or os.environ.get(prov_cfg.api_key_env)
+                    api_key = config.credentials.get(prov_cfg.api_key_env) or os.environ.get(
+                        prov_cfg.api_key_env
                     )
                 adapter = adapter_cls(api_key=api_key)
                 roles = [Role(v) for v in role_values]

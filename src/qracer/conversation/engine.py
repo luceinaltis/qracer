@@ -92,9 +92,7 @@ class ConversationEngine:
         self._last_response: EngineResponse | None = None
         self._config_version = 0
 
-    def update_registries(
-        self, llm_registry: LLMRegistry, data_registry: DataRegistry
-    ) -> None:
+    def update_registries(self, llm_registry: LLMRegistry, data_registry: DataRegistry) -> None:
         """Hot-swap registries when config changes at runtime."""
         self._llm = llm_registry
         self._intent_parser = IntentParser(llm_registry)
