@@ -23,9 +23,10 @@ SCHEMA_DIR = Path(__file__).parent / "config" / "schema"
 
 BANNER = """\
 ╔══════════════════════════════════════════╗
-║  Tracer — conversational alpha engine    ║
+║  qracer — conversational alpha engine   ║
 ╚══════════════════════════════════════════╝
 Type your query, or 'quit' to exit.
+Commands: save, save json, help
 """
 
 
@@ -241,47 +242,79 @@ def _build_registries() -> tuple:  # type: ignore[type-arg]
     return llm_registry, data_registry
 
 
+_HELP_TEXT = """\
+Available commands:
+  save          Save last analysis as Markdown
+  save json     Save last analysis as JSON
+  help          Show this help
+  quit          Exit
+
+Tips:
+  - Ask about any ticker: "Analyze AAPL", "Why did TSLA spike?"
+  - Compare tickers: "Compare AAPL and MSFT"
+  - Follow up naturally: "What about Samsung?", "More details?"
+
+Note: qracer provides research analysis only, not investment advice.
+      It cannot execute trades or predict future prices.
+"""
+
+
 async def _repl_loop(engine: object) -> None:
     """Run the interactive read-eval-print loop."""
     click.echo(BANNER)
 
     while True:
         try:
-            user_input = input("tracer> ").strip()
+            user_input = input("qracer> ").strip()
         except (EOFError, KeyboardInterrupt):
             click.echo("\nGoodbye.")
             break
 
         if not user_input:
             continue
-        if user_input.lower() in ("quit", "exit", "q"):
+
+        cmd = user_input.lower()
+
+        if cmd in ("quit", "exit", "q"):
             click.echo("Goodbye.")
             break
 
-        if user_input.lower() in ("save", "save analysis", "/save"):
+        if cmd in ("help", "/help"):
+            click.echo(_HELP_TEXT)
+            continue
+
+        if cmd in ("save", "save analysis", "/save"):
             path = engine.save_last_report()  # type: ignore[attr-defined]
             if path:
                 click.echo(f"Saved to {path}\n")
             else:
-                click.echo("No analysis to save.\n")
+                click.echo("No analysis to save. Run a query first.\n")
             continue
 
-        if user_input.lower() in ("save json", "/save json"):
+        if cmd in ("save json", "/save json"):
             path = engine.save_last_report(fmt="json")  # type: ignore[attr-defined]
             if path:
                 click.echo(f"Saved to {path}\n")
             else:
-                click.echo("No analysis to save.\n")
+                click.echo("No analysis to save. Run a query first.\n")
             continue
 
+        # Show progress while query is processing.
+        click.echo("Analyzing...", nl=False)
         try:
             response = await engine.query(user_input)  # type: ignore[attr-defined]
-            click.echo()
+            click.echo("\r" + " " * 20 + "\r", nl=False)  # clear "Analyzing..."
             click.echo(response.text)
             click.echo()
-        except Exception:
+        except KeyError as exc:
+            click.echo("\r" + " " * 20 + "\r", nl=False)
+            click.echo(f"Missing component: {exc}")
+            click.echo("Hint: run 'qracer status' to check provider configuration.\n")
+        except Exception as exc:
+            click.echo("\r" + " " * 20 + "\r", nl=False)
             logger.exception("Error processing query")
-            click.echo("An error occurred. Check logs for details.\n")
+            click.echo(f"Something went wrong: {type(exc).__name__}")
+            click.echo("Hint: try rephrasing your query or check 'qracer status'.\n")
 
 
 @main.command()
