@@ -8,7 +8,7 @@ import pytest
 
 from tracer.config.models import Holding, PortfolioConfig, PortfolioLimits
 from tracer.models import TradeThesis
-from tracer.risk.calculator import RiskCalculator, get_sector
+from tracer.risk.calculator import RiskCalculator, SectorResolver, get_sector
 from tracer.risk.models import PortfolioSnapshot
 
 # ---------------------------------------------------------------------------
@@ -371,3 +371,83 @@ class TestDrawdownTracking:
         assert result.peak_value == result.snapshot.total_value
         assert result.current_drawdown_pct == 0.0
         assert result.max_drawdown_alert is False
+
+
+# ---------------------------------------------------------------------------
+# SectorResolver
+# ---------------------------------------------------------------------------
+
+
+class TestSectorResolver:
+    def test_hardcoded_lookup(self) -> None:
+        resolver = SectorResolver()
+        assert resolver.get_sector("AAPL") == "Technology"
+        assert resolver.get_sector("JPM") == "Financials"
+
+    def test_unknown_ticker_returns_unknown(self) -> None:
+        resolver = SectorResolver()
+        assert resolver.get_sector("ZZZZ") == "Unknown"
+
+    def test_case_insensitive(self) -> None:
+        resolver = SectorResolver()
+        assert resolver.get_sector("aapl") == "Technology"
+
+    def test_cache_hit(self) -> None:
+        resolver = SectorResolver()
+        resolver.get_sector("AAPL")
+        assert "AAPL" in resolver._cache
+        assert resolver.get_sector("AAPL") == "Technology"
+
+    async def test_async_fallback_to_hardcoded(self) -> None:
+        resolver = SectorResolver()
+        sector = await resolver.get_sector_async("AAPL")
+        assert sector == "Technology"
+
+    async def test_async_dynamic_lookup(self) -> None:
+        from tracer.data.providers import FundamentalData
+
+        mock_registry = MagicMock()
+
+        async def _fake_fallback(*args, **kwargs):
+            return FundamentalData(ticker="ZZZZ", sector="Industrials")
+
+        mock_registry.async_get_with_fallback = _fake_fallback
+
+        resolver = SectorResolver(data_registry=mock_registry)
+        sector = await resolver.get_sector_async("ZZZZ")
+        assert sector == "Industrials"
+        assert resolver._cache["ZZZZ"] == "Industrials"
+
+    async def test_async_no_sector_falls_back(self) -> None:
+        from tracer.data.providers import FundamentalData
+
+        mock_registry = MagicMock()
+
+        async def _fake_fallback(*args, **kwargs):
+            return FundamentalData(ticker="AAPL", sector=None)
+
+        mock_registry.async_get_with_fallback = _fake_fallback
+
+        resolver = SectorResolver(data_registry=mock_registry)
+        sector = await resolver.get_sector_async("AAPL")
+        assert sector == "Technology"
+
+    async def test_async_failure_falls_back(self) -> None:
+        mock_registry = MagicMock()
+
+        async def _failing(*args, **kwargs):
+            raise RuntimeError("down")
+
+        mock_registry.async_get_with_fallback = _failing
+
+        resolver = SectorResolver(data_registry=mock_registry)
+        sector = await resolver.get_sector_async("AAPL")
+        assert sector == "Technology"
+
+    def test_calculator_uses_resolver(self, portfolio_config: PortfolioConfig) -> None:
+        resolver = SectorResolver()
+        calc = RiskCalculator(portfolio_config, sector_resolver=resolver)
+        prices = {"AAPL": 180.0, "MSFT": 350.0, "JPM": 160.0}
+        exposure = calc.build_exposure(calc.build_snapshot(prices))
+        assert "Technology" in exposure.sector_weights
+        assert "Financials" in exposure.sector_weights
