@@ -164,10 +164,7 @@ class ConversationEngine:
         # 1a. Handle ambiguous intents — ask for clarification.
         if intent.ambiguous and intent.candidates:
             candidates_str = ", ".join(intent.candidates[:3])
-            clarification = (
-                f"I'm not sure what you mean. "
-                f"Did you want: {candidates_str}?"
-            )
+            clarification = f"I'm not sure what you mean. Did you want: {candidates_str}?"
             if self._context.topic_stack:
                 topics = self._context.topic_stack[:3]
                 clarification += f" (Recent topics: {', '.join(topics)})"

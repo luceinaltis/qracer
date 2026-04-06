@@ -279,12 +279,14 @@ class TestConfidenceAndAmbiguity:
         assert intent.ambiguous is False
 
     async def test_llm_low_confidence_is_ambiguous(self) -> None:
-        body = json.dumps({
-            "intent": "deep_dive",
-            "tickers": ["AAPL"],
-            "confidence": 0.4,
-            "candidates": ["deep_dive", "event_analysis"],
-        })
+        body = json.dumps(
+            {
+                "intent": "deep_dive",
+                "tickers": ["AAPL"],
+                "confidence": 0.4,
+                "candidates": ["deep_dive", "event_analysis"],
+            }
+        )
         parser = IntentParser(make_single_role_registry(Role.RESEARCHER, body))
         intent = await parser.parse("What about AAPL")
         assert intent.confidence == 0.4
@@ -299,12 +301,14 @@ class TestConfidenceAndAmbiguity:
         assert intent.ambiguous is False
 
     async def test_just_below_threshold_is_ambiguous(self) -> None:
-        body = json.dumps({
-            "intent": "follow_up",
-            "tickers": [],
-            "confidence": 0.69,
-            "candidates": ["follow_up", "deep_dive"],
-        })
+        body = json.dumps(
+            {
+                "intent": "follow_up",
+                "tickers": [],
+                "confidence": 0.69,
+                "candidates": ["follow_up", "deep_dive"],
+            }
+        )
         parser = IntentParser(make_single_role_registry(Role.RESEARCHER, body))
         intent = await parser.parse("looks good")
         assert intent.ambiguous is True
