@@ -64,7 +64,7 @@ class YfinanceAdapter:
 
     capabilities: list = [PriceProvider]
 
-    def __init__(self) -> None:
+    def __init__(self, api_key: str | None = None) -> None:
         if not _HAS_YFINANCE:
             raise ImportError("yfinance is not installed. Install it with: uv add yfinance")
 

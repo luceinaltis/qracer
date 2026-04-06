@@ -292,7 +292,13 @@ def _build_registries() -> tuple:  # type: ignore[type-arg]
             try:
                 mod_path, cls_name = adapter_path.rsplit(".", 1)
                 adapter_cls = getattr(importlib.import_module(mod_path), cls_name)
-                adapter = adapter_cls()
+                # Inject API key from credentials if declared
+                api_key = None
+                if prov_cfg.api_key_env:
+                    api_key = config.credentials.get(prov_cfg.api_key_env) or os.environ.get(
+                        prov_cfg.api_key_env
+                    )
+                adapter = adapter_cls(api_key=api_key) if api_key else adapter_cls()
                 caps = []
                 for cp in cap_paths:
                     cp_mod, cp_name = cp.rsplit(".", 1)
