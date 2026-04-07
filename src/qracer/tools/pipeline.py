@@ -23,6 +23,7 @@ from qracer.data.providers import (
 from qracer.data.registry import DataRegistry
 from qracer.llm.providers import CompletionRequest, Message, Role
 from qracer.llm.registry import LLMRegistry
+from qracer.memory.memory_searcher import MemorySearcher
 from qracer.models import ToolResult, TradeThesis
 
 logger = logging.getLogger(__name__)
@@ -220,7 +221,7 @@ async def cross_market(tickers: list[str], registry: DataRegistry) -> ToolResult
     try:
         end = date.today()
         start = end - timedelta(days=_DEFAULT_LOOKBACK_DAYS)
-        result_data: dict[str, object] = {"period_start": start.isoformat(), "tickers": {}}
+        result_data: dict[str, Any] = {"period_start": start.isoformat(), "tickers": {}}
 
         for ticker in tickers:
             try:
@@ -230,18 +231,18 @@ async def cross_market(tickers: list[str], registry: DataRegistry) -> ToolResult
                 current_price = await registry.async_get_with_fallback(
                     PriceProvider, "get_price", ticker
                 )
-                result_data["tickers"][ticker] = {  # type: ignore[index]
+                result_data["tickers"][ticker] = {
                     "current_price": current_price,
                     "bars": len(bars),
                 }
             except Exception as inner_exc:
-                result_data["tickers"][ticker] = {"error": str(inner_exc)}  # type: ignore[index]
+                result_data["tickers"][ticker] = {"error": str(inner_exc)}
 
         now = datetime.now()
         return ToolResult(
             tool="cross_market",
             success=True,
-            data=result_data,  # type: ignore[arg-type]
+            data=result_data,
             source="PriceProvider",
             fetched_at=now,
             is_stale=_is_stale(now),
@@ -444,7 +445,9 @@ async def risk_check(
         )
 
 
-async def memory_search(query: str, searcher: Any = None, **kwargs: object) -> ToolResult:
+async def memory_search(
+    query: str, searcher: MemorySearcher | None = None, **kwargs: object
+) -> ToolResult:
     """Search past analyses stored in session memory.
 
     If a MemorySearcher instance is provided, performs a real FTS search.

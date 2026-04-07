@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from qracer.conversation.intent import INTENT_TOOL_MAP, Intent
 from qracer.data.registry import DataRegistry
+from qracer.memory.memory_searcher import MemorySearcher
 from qracer.models import ToolResult
 from qracer.tools import pipeline
 
@@ -36,7 +36,7 @@ async def invoke_tool(
     intent: Intent,
     registry: DataRegistry,
     *,
-    memory_searcher: Any = None,
+    memory_searcher: MemorySearcher | None = None,
 ) -> ToolResult:
     """Invoke a single pipeline tool based on the intent context."""
     tickers = intent.tickers
@@ -70,7 +70,7 @@ async def invoke_tools(
     intent: Intent,
     registry: DataRegistry,
     *,
-    memory_searcher: Any = None,
+    memory_searcher: MemorySearcher | None = None,
 ) -> list[ToolResult]:
     """Invoke multiple pipeline tools concurrently."""
     if not tool_names:

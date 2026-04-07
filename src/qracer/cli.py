@@ -9,8 +9,13 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
+
+if TYPE_CHECKING:
+    from qracer.data.registry import DataRegistry
+    from qracer.llm.registry import LLMRegistry
 
 from qracer.config.loader import (
     _load_toml,
@@ -247,7 +252,7 @@ def _config_set(pair: str) -> None:
     click.echo(f"Set {key}={value} in {config_path}")
 
 
-def _write_toml(path: Path, data: dict) -> None:  # type: ignore[type-arg]
+def _write_toml(path: Path, data: dict[str, object]) -> None:
     """Write a flat dict back to TOML."""
     lines: list[str] = []
     for k, v in data.items():
@@ -265,7 +270,7 @@ def _write_toml(path: Path, data: dict) -> None:  # type: ignore[type-arg]
 # ---------------------------------------------------------------------------
 
 
-def _build_registries() -> tuple:  # type: ignore[type-arg]
+def _build_registries() -> tuple[LLMRegistry, DataRegistry, list[str]]:
     """Build LLM and data registries from providers.toml + provider catalog.
 
     Returns ``(llm_registry, data_registry, warnings)`` where *warnings*
