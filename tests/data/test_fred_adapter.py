@@ -79,8 +79,8 @@ class TestFetchIndicator:
             _fetch_indicator(mock_client, "gdp")
 
     def test_nan_values_dropped(self) -> None:
-        import pandas as pd
         import numpy as np
+        import pandas as pd
 
         from qracer.data.fred_adapter import _fetch_indicator
 
