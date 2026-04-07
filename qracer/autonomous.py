@@ -49,9 +49,7 @@ class AutonomousAlert:
     summary: str
     severity: Severity
     data: dict[str, object] = field(default_factory=dict)
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 def is_market_hours(now: datetime | None = None) -> bool:

@@ -319,9 +319,7 @@ class TestPriceMoves:
 
 class TestBreakingNews:
     async def test_high_sentiment_triggers_alert(self, watchlist) -> None:
-        articles = {
-            "AAPL": [_make_article("AAPL", "FDA Approves New Product", sentiment=0.9)]
-        }
+        articles = {"AAPL": [_make_article("AAPL", "FDA Approves New Product", sentiment=0.9)]}
         registry = _make_registry(news_provider=FakeNewsProvider(articles))
         monitor = AutonomousMonitor(watchlist, registry, check_interval=0, cooldown_minutes=0)
 
@@ -332,9 +330,7 @@ class TestBreakingNews:
         assert "FDA" in news_alerts[0].summary
 
     async def test_low_sentiment_no_alert(self, watchlist) -> None:
-        articles = {
-            "AAPL": [_make_article("AAPL", "Routine update", sentiment=0.3)]
-        }
+        articles = {"AAPL": [_make_article("AAPL", "Routine update", sentiment=0.3)]}
         registry = _make_registry(news_provider=FakeNewsProvider(articles))
         monitor = AutonomousMonitor(watchlist, registry, check_interval=0, cooldown_minutes=0)
 
@@ -343,9 +339,7 @@ class TestBreakingNews:
         assert len(news_alerts) == 0
 
     async def test_negative_sentiment_triggers(self, watchlist) -> None:
-        articles = {
-            "TSLA": [_make_article("TSLA", "Major recall announced", sentiment=-0.8)]
-        }
+        articles = {"TSLA": [_make_article("TSLA", "Major recall announced", sentiment=-0.8)]}
         registry = _make_registry(news_provider=FakeNewsProvider(articles))
         monitor = AutonomousMonitor(watchlist, registry, check_interval=0, cooldown_minutes=0)
 
@@ -369,9 +363,7 @@ class TestBreakingNews:
         assert len(alerts) == 0
 
     async def test_none_sentiment_ignored(self, watchlist) -> None:
-        articles = {
-            "AAPL": [_make_article("AAPL", "Some news", sentiment=None)]
-        }
+        articles = {"AAPL": [_make_article("AAPL", "Some news", sentiment=None)]}
         registry = _make_registry(news_provider=FakeNewsProvider(articles))
         monitor = AutonomousMonitor(watchlist, registry, check_interval=0, cooldown_minutes=0)
 
@@ -389,9 +381,7 @@ class TestCooldown:
     async def test_cooldown_prevents_repeat_alert(self, watchlist) -> None:
         provider = FakePriceProvider({"AAPL": 200.0, "TSLA": 300.0})
         registry = _make_registry(price_provider=provider)
-        monitor = AutonomousMonitor(
-            watchlist, registry, check_interval=0, cooldown_minutes=60
-        )
+        monitor = AutonomousMonitor(watchlist, registry, check_interval=0, cooldown_minutes=60)
 
         await monitor.check()
         provider._prices["AAPL"] = 210.0
@@ -406,9 +396,7 @@ class TestCooldown:
     async def test_other_ticker_not_affected(self, watchlist) -> None:
         provider = FakePriceProvider({"AAPL": 200.0, "TSLA": 300.0})
         registry = _make_registry(price_provider=provider)
-        monitor = AutonomousMonitor(
-            watchlist, registry, check_interval=0, cooldown_minutes=60
-        )
+        monitor = AutonomousMonitor(watchlist, registry, check_interval=0, cooldown_minutes=60)
 
         await monitor.check()
         provider._prices["AAPL"] = 210.0
