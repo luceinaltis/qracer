@@ -89,11 +89,13 @@ class AlertStore:
 
     def __init__(self, path: Path) -> None:
         self._path = path
+        self._mtime: float = 0.0
         self._alerts: list[Alert] = self._load()
 
     @property
     def alerts(self) -> list[Alert]:
         """All alerts."""
+        self._maybe_reload()
         return list(self._alerts)
 
     def create(
@@ -115,12 +117,25 @@ class AlertStore:
         self._save()
         return alert
 
+    def _maybe_reload(self) -> None:
+        """Re-read from disk if another process modified the file."""
+        if not self._path.exists():
+            return
+        try:
+            current_mtime = self._path.stat().st_mtime
+        except OSError:
+            return
+        if current_mtime != self._mtime:
+            self._alerts = self._load()
+
     def get_active(self) -> list[Alert]:
         """Return all active (not yet triggered) alerts."""
+        self._maybe_reload()
         return [a for a in self._alerts if a.active]
 
     def get_by_ticker(self, ticker: str) -> list[Alert]:
         """Return all alerts for a given ticker."""
+        self._maybe_reload()
         upper = ticker.upper()
         return [a for a in self._alerts if a.ticker == upper]
 
@@ -156,6 +171,7 @@ class AlertStore:
             return []
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
+            self._mtime = self._path.stat().st_mtime
             if isinstance(data, list):
                 return [self._deserialize(item) for item in data if isinstance(item, dict)]
         except (json.JSONDecodeError, OSError, KeyError, ValueError):
@@ -166,6 +182,7 @@ class AlertStore:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data = [self._serialize(a) for a in self._alerts]
         self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        self._mtime = self._path.stat().st_mtime
 
     @staticmethod
     def _serialize(alert: Alert) -> dict[str, Any]:

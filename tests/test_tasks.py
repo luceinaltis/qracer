@@ -262,3 +262,33 @@ class TestTaskStore:
     def test_missing_file(self, tmp_path) -> None:
         store = TaskStore(tmp_path / "nonexistent.json")
         assert len(store) == 0
+
+    def test_hot_reload_picks_up_external_changes(self, tmp_path) -> None:
+        """When another process modifies tasks.json, store should reload."""
+        import json
+        import time
+
+        path = tmp_path / "tasks.json"
+        store = TaskStore(path)
+        store.create(TaskActionType.ANALYZE, {"ticker": "AAPL"}, "every 1h")
+        assert len(store.get_all()) == 1
+
+        # Simulate external process adding a task
+        time.sleep(0.05)  # Ensure mtime differs
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data.append(
+            {
+                "id": "external1",
+                "action_type": "news_scan",
+                "action_params": {"ticker": "TSLA"},
+                "schedule_type": "recurring",
+                "schedule_spec": "every 30m",
+                "status": "pending",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "next_run_at": "2026-01-01T00:30:00+00:00",
+            }
+        )
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        # Store should detect the change
+        assert len(store.get_all()) == 2

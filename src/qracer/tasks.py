@@ -215,6 +215,7 @@ class TaskStore:
 
     def __init__(self, path: Path) -> None:
         self._path = path
+        self._mtime: float = 0.0
         self._tasks: list[Task] = self._load()
 
     @property
@@ -246,15 +247,29 @@ class TaskStore:
         self._save()
         return task
 
+    def _maybe_reload(self) -> None:
+        """Re-read from disk if another process modified the file."""
+        if not self._path.exists():
+            return
+        try:
+            current_mtime = self._path.stat().st_mtime
+        except OSError:
+            return
+        if current_mtime != self._mtime:
+            self._tasks = self._load()
+
     def get_due(self, now: datetime | None = None) -> list[Task]:
         """Return tasks that are due for execution."""
+        self._maybe_reload()
         return [t for t in self._tasks if t.is_due(now)]
 
     def get_active(self) -> list[Task]:
         """Return tasks that are enabled and not completed."""
+        self._maybe_reload()
         return [t for t in self._tasks if t.enabled and t.status != TaskStatus.COMPLETED]
 
     def get_all(self) -> list[Task]:
+        self._maybe_reload()
         return list(self._tasks)
 
     def mark_running(self, task_id: str) -> bool:
@@ -325,6 +340,7 @@ class TaskStore:
             return []
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
+            self._mtime = self._path.stat().st_mtime
             if isinstance(data, list):
                 return [self._deserialize(item) for item in data if isinstance(item, dict)]
         except (json.JSONDecodeError, OSError, KeyError, ValueError):
@@ -335,6 +351,7 @@ class TaskStore:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data = [self._serialize(t) for t in self._tasks]
         self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        self._mtime = self._path.stat().st_mtime
 
     @staticmethod
     def _serialize(task: Task) -> dict[str, Any]:
