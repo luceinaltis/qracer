@@ -282,12 +282,16 @@ def _build_registries() -> tuple[LLMRegistry, DataRegistry, list[str]]:
     from qracer.data.registry import DataRegistry
     from qracer.llm.providers import Role
     from qracer.llm.registry import LLMRegistry
-    from qracer.provider_catalog import BUILTIN_DATA_PROVIDERS, BUILTIN_LLM_PROVIDERS
+    from qracer.provider_catalog import discover_data_providers, discover_llm_providers
 
     config = load_config()
     llm_registry = LLMRegistry()
     data_registry = DataRegistry()
     warnings: list[str] = []
+
+    # Discover providers: built-ins + any installed entry-point plugins.
+    data_catalog = discover_data_providers()
+    llm_catalog = discover_llm_providers()
 
     sorted_providers = sorted(
         config.providers.providers.items(),
@@ -310,8 +314,8 @@ def _build_registries() -> tuple[LLMRegistry, DataRegistry, list[str]]:
                 logger.warning("Provider '%s' skipped: %s not set", name, prov_cfg.api_key_env)
                 continue
 
-        if prov_cfg.kind == "data" and name in BUILTIN_DATA_PROVIDERS:
-            adapter_path, cap_paths = BUILTIN_DATA_PROVIDERS[name]
+        if prov_cfg.kind == "data" and name in data_catalog:
+            adapter_path, cap_paths = data_catalog[name]
             try:
                 mod_path, cls_name = adapter_path.rsplit(".", 1)
                 adapter_cls = getattr(importlib.import_module(mod_path), cls_name)
@@ -326,8 +330,8 @@ def _build_registries() -> tuple[LLMRegistry, DataRegistry, list[str]]:
                 warnings.append(msg)
                 logger.warning("Data provider '%s' unavailable: %s", name, exc)
 
-        elif prov_cfg.kind == "llm" and name in BUILTIN_LLM_PROVIDERS:
-            adapter_path, role_values = BUILTIN_LLM_PROVIDERS[name]
+        elif prov_cfg.kind == "llm" and name in llm_catalog:
+            adapter_path, role_values = llm_catalog[name]
             try:
                 mod_path, cls_name = adapter_path.rsplit(".", 1)
                 adapter_cls = getattr(importlib.import_module(mod_path), cls_name)
