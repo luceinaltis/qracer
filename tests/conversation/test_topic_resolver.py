@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from qracer.conversation.context import ConversationContext
 from qracer.conversation.topic_resolver import TopicSource, resolve_unknown_topic
 from qracer.memory.memory_searcher import MemorySearcher
@@ -42,7 +44,10 @@ class TestLocalSearch:
 class TestEmbeddingSearch:
     async def test_found_in_memory(self):
         ctx = _ctx()
-        searcher = MemorySearcher()
+        try:
+            searcher = MemorySearcher()
+        except Exception:
+            pytest.skip("DuckDB FTS extension unavailable")
         searcher.index_summary("sess_aapl", "# AAPLA Analysis\nAAPL beat earnings...")
         result = await resolve_unknown_topic(
             "AAPL quarterly results", ctx, memory_searcher=searcher
@@ -53,7 +58,10 @@ class TestEmbeddingSearch:
 
     async def test_not_found_in_memory(self):
         ctx = _ctx()
-        searcher = MemorySearcher()
+        try:
+            searcher = MemorySearcher()
+        except Exception:
+            pytest.skip("DuckDB FTS extension unavailable")
         result = await resolve_unknown_topic("Unknown stock", ctx, memory_searcher=searcher)
         assert result.resolved is False
         searcher.close()

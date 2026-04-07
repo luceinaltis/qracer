@@ -12,7 +12,10 @@ from qracer.memory.memory_searcher import MemorySearcher
 
 @pytest.fixture
 def searcher() -> Iterator[MemorySearcher]:
-    s = MemorySearcher()
+    try:
+        s = MemorySearcher()
+    except Exception:
+        pytest.skip("DuckDB FTS extension unavailable")
     yield s
     s.close()
 
