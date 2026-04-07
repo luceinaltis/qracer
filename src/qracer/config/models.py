@@ -15,6 +15,14 @@ class AppConfig(BaseModel):
     llm_model: str = "claude-sonnet-4-20250514"
     language: str = "en"
 
+    # Analysis loop tuning
+    max_iterations: int = 3
+    confidence_threshold: float = 0.7
+
+    # Pipeline defaults
+    lookback_days: int = 30
+    staleness_hours: int = 24
+
 
 class ProviderConfig(BaseModel):
     """Single provider entry inside providers.toml."""
