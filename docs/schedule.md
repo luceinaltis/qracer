@@ -21,19 +21,9 @@ General-purpose task scheduler for qracer. Records tasks to execute later — bo
 | Daily | `daily 09:30` | Recurring |
 | Weekly | `weekly monday 09:00` | Recurring |
 
-## Execution Modes
+## Execution
 
-### 1. REPL Polling
 When the REPL is running, due tasks are checked every 30 seconds before each prompt. Results are displayed inline.
-
-### 2. CLI Command
-```bash
-qracer schedule-run
-```
-Checks and executes all due tasks once, then exits. Designed for use with OS-level schedulers:
-
-- **Linux/macOS**: `*/5 * * * * qracer schedule-run`
-- **Windows**: Task Scheduler → run `qracer schedule-run` every 5 minutes
 
 ## REPL Commands
 

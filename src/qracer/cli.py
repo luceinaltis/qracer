@@ -886,41 +886,6 @@ def repl() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# qracer schedule-run
-# ---------------------------------------------------------------------------
-
-
-@main.command("schedule-run")
-def schedule_run() -> None:
-    """Check and execute due scheduled tasks (for OS cron / Task Scheduler)."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-        stream=sys.stderr,
-    )
-
-    from qracer.task_executor import TaskExecutor
-    from qracer.tasks import TaskStore
-
-    llm_registry, data_registry, provider_warnings = _build_registries()
-    for warn in provider_warnings:
-        click.echo(f"  ⚠ {warn}")
-
-    task_store = TaskStore(_user_dir() / "tasks.json")
-    executor = TaskExecutor(task_store, data_registry, llm_registry, check_interval=0)
-
-    async def _run() -> int:
-        results = await executor.check()
-        for r in results:
-            status = "✓" if r.success else "✗"
-            click.echo(f"[{status}] {r.task.describe()}: {r.output or r.error}")
-        return 0 if all(r.success for r in results) else 1
-
-    exit_code = asyncio.run(_run())
-    if exit_code:
-        sys.exit(1)
-
 
 # ---------------------------------------------------------------------------
 # qracer dashboard
