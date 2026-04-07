@@ -884,6 +884,82 @@ def repl() -> None:
 
 
 # ---------------------------------------------------------------------------
+# qracer serve
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option("--check-interval", default=30, help="Seconds between task/alert checks.")
+def serve(check_interval: int) -> None:
+    """Run qracer as a background service (scheduled tasks + alerts)."""
+    import signal
+
+    from qracer.alert_monitor import AlertMonitor
+    from qracer.alerts import AlertStore
+    from qracer.notifications.factory import build_notification_registry
+    from qracer.pidfile import acquire, release
+    from qracer.server import Server
+    from qracer.task_executor import TaskExecutor
+    from qracer.tasks import TaskStore
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        stream=sys.stderr,
+    )
+
+    pid_path = _user_dir() / "serve.pid"
+    if not acquire(pid_path):
+        click.echo("qracer serve is already running. Use 'qracer serve-stop' or check serve.pid.")
+        sys.exit(1)
+
+    llm_registry, data_registry, provider_warnings = _build_registries()
+    for warn in provider_warnings:
+        click.echo(f"  ⚠ {warn}")
+
+    # Apply config-driven pipeline defaults.
+    from qracer.tools.pipeline import configure as configure_pipeline
+
+    app_cfg = load_config().app
+    configure_pipeline(
+        lookback_days=app_cfg.lookback_days,
+        staleness_hours=app_cfg.staleness_hours,
+    )
+
+    alert_store = AlertStore(_user_dir() / "alerts.json")
+    alert_monitor = AlertMonitor(alert_store, data_registry, check_interval=check_interval)
+
+    task_store = TaskStore(_user_dir() / "tasks.json")
+    task_executor = TaskExecutor(
+        task_store, data_registry, llm_registry, check_interval=check_interval
+    )
+
+    config = load_config()
+    notifications = build_notification_registry(config.credentials)
+
+    server = Server(alert_monitor, task_executor, notifications, tick_interval=1.0)
+
+    def _handle_signal(signum: int, _frame: object) -> None:
+        click.echo(f"\nReceived signal {signum}, shutting down...")
+        server.shutdown()
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+    click.echo(f"qracer serve started (check every {check_interval}s, PID {os.getpid()})")
+    channels = notifications.channels
+    if channels:
+        click.echo(f"  Notifications: {', '.join(channels)}")
+    click.echo("  Press Ctrl+C to stop.\n")
+
+    try:
+        asyncio.run(server.run())
+    finally:
+        release(pid_path)
+        click.echo("qracer serve stopped.")
+
+
+# ---------------------------------------------------------------------------
 # qracer dashboard
 # ---------------------------------------------------------------------------
 
