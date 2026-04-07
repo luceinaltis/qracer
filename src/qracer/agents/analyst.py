@@ -5,10 +5,14 @@ Pipeline steps: Macro Regime Detection (step 2), Cross-Market Discovery (step 3)
 
 from __future__ import annotations
 
+import logging
+
 from qracer.agents.base import BaseAgent
 from qracer.data.providers import MacroProvider, NewsProvider, PriceProvider
 from qracer.llm.providers import Role
 from qracer.models import ToolResult
+
+logger = logging.getLogger(__name__)
 
 
 class Analyst(BaseAgent):
@@ -59,7 +63,7 @@ class Analyst(BaseAgent):
                         )
                     )
         except KeyError:
-            pass  # no MacroProvider registered
+            logger.debug("MacroProvider not registered, skipping regime indicators")
 
         data_text = self._format_tool_data(self._successful_results(results))
         return await self._complete_json(
@@ -117,7 +121,7 @@ class Analyst(BaseAgent):
                         )
                     )
         except KeyError:
-            pass
+            logger.debug("PriceProvider not registered, skipping price data")
 
         # News data
         try:
@@ -139,9 +143,17 @@ class Analyst(BaseAgent):
                         )
                     )
                 except Exception:
-                    pass  # news is supplementary
+                    results.append(
+                        ToolResult(
+                            tool="news",
+                            success=False,
+                            data={},
+                            source="NewsProvider",
+                            error=f"News fetch failed for {ticker}",
+                        )
+                    )
         except KeyError:
-            pass
+            logger.debug("NewsProvider not registered, skipping news data")
 
         data_text = self._format_tool_data(self._successful_results(results))
         return await self._complete_json(

@@ -460,6 +460,7 @@ async def memory_search(query: str, searcher: Any = None, **kwargs: object) -> T
                 ],
             }
         except Exception:
+            logger.debug("memory_search query failed for '%s'", query, exc_info=True)
             return {"query": query, "results": []}
 
     return await _run_tool("memory_search", "SessionMemory", _fetch, label=query, stale_check=False)
