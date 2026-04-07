@@ -150,9 +150,7 @@ class TestTomlParseErrors:
         monkeypatch.setattr(
             "qracer.config.loader._project_dir", lambda: user_qracer.parent / "nope"
         )
-        monkeypatch.setattr(
-            "qracer.config.loader._user_dir", lambda: user_qracer
-        )
+        monkeypatch.setattr("qracer.config.loader._user_dir", lambda: user_qracer)
         monkeypatch.delenv("QRACER_CONFIG_DIR", raising=False)
         with pytest.raises(ConfigParseError):
             load_config(force_reload=True)
