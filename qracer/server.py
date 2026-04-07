@@ -10,6 +10,7 @@ import asyncio
 import logging
 
 from qracer.alert_monitor import AlertMonitor
+from qracer.autonomous import AutonomousMonitor
 from qracer.notifications.providers import Notification, NotificationCategory
 from qracer.notifications.registry import NotificationRegistry
 from qracer.task_executor import TaskExecutor
@@ -33,10 +34,12 @@ class Server:
         task_executor: TaskExecutor,
         notifications: NotificationRegistry | None = None,
         *,
+        autonomous_monitor: AutonomousMonitor | None = None,
         tick_interval: float = 1.0,
     ) -> None:
         self._alert_monitor = alert_monitor
         self._task_executor = task_executor
+        self._autonomous_monitor = autonomous_monitor
         self._notifications = notifications or NotificationRegistry()
         self._tick_interval = tick_interval
         self._shutdown_event = asyncio.Event()
@@ -87,6 +90,19 @@ class Server:
                         )
             except Exception:
                 logger.debug("Task check failed", exc_info=True)
+
+        if self._autonomous_monitor and self._autonomous_monitor.should_check():
+            try:
+                auto_alerts = await self._autonomous_monitor.check()
+                for alert in auto_alerts:
+                    logger.info("Autonomous alert: %s", alert.summary)
+                    await self._notify(
+                        NotificationCategory.AUTONOMOUS_MODE,
+                        f"[{alert.severity.value.upper()}] {alert.ticker}",
+                        alert.summary,
+                    )
+            except Exception:
+                logger.debug("Autonomous check failed", exc_info=True)
 
     async def _notify(self, category: NotificationCategory, title: str, body: str) -> None:
         """Send a notification if any channels are registered."""
