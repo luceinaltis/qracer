@@ -14,6 +14,20 @@ from qracer.models import ToolResult
 logger = logging.getLogger(__name__)
 
 
+def _format_fallback(
+    header: str,
+    query: str,
+    tool_lines: list[str],
+    closing: str,
+) -> str:
+    """Shared fallback formatter used when the LLM is unavailable."""
+    lines = [header, f"Query: {query}", ""]
+    lines.extend(tool_lines)
+    lines.append("")
+    lines.append(closing)
+    return "\n".join(lines)
+
+
 class ResponseSynthesizer:
     """Synthesizes a final response from analysis results.
 
@@ -86,16 +100,14 @@ class ResponseSynthesizer:
 
     def _fallback_response(self, intent: Intent, analysis: AnalysisResult) -> str:
         """Minimal plain-text fallback when the LLM is unavailable."""
-        lines = [f"[ANALYSIS: {', '.join(intent.tickers) or 'general'}]"]
-        lines.append(f"Query: {intent.raw_query}")
-        lines.append(f"Confidence: {analysis.confidence:.2f}")
-        lines.append("")
+        header = f"[ANALYSIS: {', '.join(intent.tickers) or 'general'}]"
+        tool_lines = [f"Confidence: {analysis.confidence:.2f}", ""]
         for r in analysis.results:
             status = "OK" if r.success else f"FAILED ({r.error})"
-            lines.append(f"  [{r.tool}] {status}")
-        lines.append("")
-        lines.append("(Full synthesis unavailable — LLM error)")
-        return "\n".join(lines)
+            tool_lines.append(f"  [{r.tool}] {status}")
+        return _format_fallback(
+            header, intent.raw_query, tool_lines, "(Full synthesis unavailable — LLM error)"
+        )
 
 
 class ComparisonSynthesizer:
@@ -156,14 +168,13 @@ class ComparisonSynthesizer:
     def _fallback_response(
         self, intent: Intent, per_ticker_results: dict[str, list[ToolResult]]
     ) -> str:
-        lines = [f"[COMPARISON: {', '.join(intent.tickers)}]"]
-        lines.append(f"Query: {intent.raw_query}")
-        lines.append("")
+        header = f"[COMPARISON: {', '.join(intent.tickers)}]"
+        tool_lines: list[str] = []
         for ticker, results in per_ticker_results.items():
-            lines.append(f"  {ticker}:")
+            tool_lines.append(f"  {ticker}:")
             for r in results:
                 status = "OK" if r.success else f"FAILED ({r.error})"
-                lines.append(f"    [{r.tool}] {status}")
-        lines.append("")
-        lines.append("(Full comparison unavailable — LLM error)")
-        return "\n".join(lines)
+                tool_lines.append(f"    [{r.tool}] {status}")
+        return _format_fallback(
+            header, intent.raw_query, tool_lines, "(Full comparison unavailable — LLM error)"
+        )
