@@ -154,3 +154,58 @@ class TestTaskExecutor:
         assert results[0].success is True
         assert "TSLA" in results[0].output
         mock_engine.query.assert_called_once_with("Analyze TSLA")
+
+    async def test_portfolio_snapshot_with_engine(self, store: TaskStore) -> None:
+        mock_engine = MagicMock()
+        mock_engine.query = AsyncMock(return_value=MagicMock())
+
+        executor = TaskExecutor(
+            store,
+            _make_registry(),
+            LLMRegistry(),
+            engine=mock_engine,
+            check_interval=0,
+        )
+
+        store.create(TaskActionType.PORTFOLIO_SNAPSHOT, {}, "every 1d")
+        store._tasks[0].next_run_at = "2020-01-01T00:00:00+00:00"
+
+        results = await executor.check()
+        assert results[0].success is True
+        assert "Portfolio" in results[0].output
+        mock_engine.query.assert_called_once_with("portfolio")
+
+    async def test_portfolio_snapshot_without_engine(self, store: TaskStore) -> None:
+        executor = TaskExecutor(store, _make_registry(), LLMRegistry(), check_interval=0)
+
+        store.create(TaskActionType.PORTFOLIO_SNAPSHOT, {}, "every 1d")
+        store._tasks[0].next_run_at = "2020-01-01T00:00:00+00:00"
+
+        results = await executor.check()
+        assert results[0].success is True
+        assert "no engine" in results[0].output
+
+    async def test_custom_query_without_engine(self, store: TaskStore) -> None:
+        executor = TaskExecutor(store, _make_registry(), LLMRegistry(), check_interval=0)
+
+        store.create(TaskActionType.CUSTOM_QUERY, {"query": "test"}, "every 1h")
+        store._tasks[0].next_run_at = "2020-01-01T00:00:00+00:00"
+
+        results = await executor.check()
+        assert results[0].success is True
+        assert "skipped" in results[0].output
+
+    async def test_cross_market_scan(self, store: TaskStore) -> None:
+        executor = TaskExecutor(store, _make_registry(), LLMRegistry(), check_interval=0)
+
+        store.create(
+            TaskActionType.CROSS_MARKET_SCAN,
+            {"tickers": ["AAPL", "TSLA"]},
+            "every 1d",
+        )
+        store._tasks[0].next_run_at = "2020-01-01T00:00:00+00:00"
+
+        results = await executor.check()
+        assert len(results) == 1
+        assert results[0].success is True
+        assert "2 tickers" in results[0].output
