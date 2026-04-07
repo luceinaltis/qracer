@@ -344,6 +344,10 @@ Available commands:
   watchlist         Show watchlist with current prices
   watch TICKER      Add ticker to watchlist
   unwatch TICKER    Remove ticker from watchlist
+  alert TICKER above/below PRICE  Set a price alert
+  alert TICKER change PERCENT     Set a % change alert
+  alerts            Show all alerts
+  remove-alert ID   Remove an alert by ID
   help              Show this help
   quit              Exit
 
@@ -351,19 +355,35 @@ Tips:
   - Ask about any ticker: "Analyze AAPL", "Why did TSLA spike?"
   - Compare tickers: "Compare AAPL and MSFT"
   - Follow up naturally: "What about Samsung?", "More details?"
+  - Set alerts: "alert AAPL above 200", "alert TSLA below 150"
 
 Note: qracer provides research analysis only, not investment advice.
       It cannot execute trades or predict future prices.
 """
 
 
-async def _repl_loop(engine: object, watchlist: object) -> None:
+async def _repl_loop(
+    engine: object,
+    watchlist: object,
+    alert_monitor: object | None = None,
+) -> None:
     """Run the interactive read-eval-print loop."""
+    from qracer.alert_monitor import AlertMonitor
     from qracer.config.loader import has_config_changed
 
     click.echo(BANNER)
+    monitor: AlertMonitor | None = alert_monitor  # type: ignore[assignment]
 
     while True:
+        # Check alerts on each iteration if enough time has elapsed.
+        if monitor and monitor.should_check():
+            try:
+                triggered = await monitor.check()
+                for result in triggered:
+                    click.echo(f"🔔 {result.message}")
+            except Exception:
+                logger.debug("Alert check failed", exc_info=True)
+
         try:
             user_input = input("qracer> ").strip()
         except (EOFError, KeyboardInterrupt):
@@ -432,6 +452,19 @@ async def _repl_loop(engine: object, watchlist: object) -> None:
                 click.echo(f"{ticker} is not on your watchlist.\n")
             continue
 
+        # Alert commands
+        if cmd in ("alerts", "/alerts"):
+            _show_alerts(monitor)
+            continue
+
+        if cmd.startswith(("alert ", "/alert ")):
+            _handle_alert_command(user_input, monitor)
+            continue
+
+        if cmd.startswith(("remove-alert ", "/remove-alert ")):
+            _handle_remove_alert(user_input, monitor)
+            continue
+
         # Show progress while query is processing.
         click.echo("Analyzing...", nl=False)
         try:
@@ -448,6 +481,102 @@ async def _repl_loop(engine: object, watchlist: object) -> None:
             logger.exception("Error processing query")
             click.echo(f"Something went wrong: {type(exc).__name__}")
             click.echo("Hint: try rephrasing your query or check 'qracer status'.\n")
+
+
+def _show_alerts(monitor: object | None) -> None:
+    """Display all alerts."""
+    from qracer.alert_monitor import AlertMonitor
+
+    if monitor is None:
+        click.echo("Alerts are not available (no data provider configured).\n")
+        return
+
+    mon: AlertMonitor = monitor  # type: ignore[assignment]
+    all_alerts = mon.store.alerts
+    if not all_alerts:
+        click.echo("No alerts set. Use 'alert TICKER above/below PRICE' to create one.\n")
+        return
+
+    active = [a for a in all_alerts if a.active]
+    triggered = [a for a in all_alerts if not a.active]
+
+    if active:
+        click.echo(f"Active alerts ({len(active)}):")
+        for a in active:
+            click.echo(f"  [{a.id}] {a.describe()}")
+
+    if triggered:
+        click.echo(f"Triggered alerts ({len(triggered)}):")
+        for a in triggered:
+            click.echo(f"  [{a.id}] {a.describe()} (triggered {a.triggered_at})")
+
+    click.echo()
+
+
+def _handle_alert_command(user_input: str, monitor: object | None) -> None:
+    """Parse and create a price alert from user input.
+
+    Supported formats:
+        alert TICKER above PRICE
+        alert TICKER below PRICE
+        alert TICKER change PERCENT
+    """
+    from qracer.alert_monitor import AlertMonitor
+    from qracer.alerts import AlertCondition
+
+    if monitor is None:
+        click.echo("Alerts are not available (no data provider configured).\n")
+        return
+
+    mon: AlertMonitor = monitor  # type: ignore[assignment]
+    parts = user_input.split()
+    # Expected: ["alert", TICKER, CONDITION, VALUE]
+    if len(parts) < 4:
+        click.echo("Usage: alert TICKER above/below PRICE  or  alert TICKER change PERCENT\n")
+        return
+
+    ticker = parts[1].upper()
+    condition_str = parts[2].lower()
+    try:
+        value = float(parts[3])
+    except ValueError:
+        click.echo(f"Invalid number: {parts[3]}\n")
+        return
+
+    condition_map = {
+        "above": AlertCondition.ABOVE,
+        "below": AlertCondition.BELOW,
+        "change": AlertCondition.CHANGE_PCT,
+        "change_pct": AlertCondition.CHANGE_PCT,
+    }
+    condition = condition_map.get(condition_str)
+    if condition is None:
+        click.echo(f"Unknown condition: {condition_str}. Use above, below, or change.\n")
+        return
+
+    alert = mon.store.create(ticker, condition, value)
+    click.echo(f"Alert set: {alert.describe()} [{alert.id}]\n")
+
+
+def _handle_remove_alert(user_input: str, monitor: object | None) -> None:
+    """Remove an alert by ID."""
+    from qracer.alert_monitor import AlertMonitor
+
+    if monitor is None:
+        click.echo("Alerts are not available (no data provider configured).\n")
+        return
+
+    mon: AlertMonitor = monitor  # type: ignore[assignment]
+    parts = user_input.split()
+    if len(parts) < 2:
+        click.echo("Usage: remove-alert ID\n")
+        return
+
+    alert_id = parts[1]
+    if mon.store.remove(alert_id):
+        click.echo(f"Alert {alert_id} removed.\n")
+    else:
+        click.echo(f"No alert found with ID {alert_id}.\n")
 
 
 def _show_watchlist(watchlist: object) -> None:
@@ -476,6 +605,8 @@ def repl() -> None:
 
     import uuid
 
+    from qracer.alert_monitor import AlertMonitor
+    from qracer.alerts import AlertStore
     from qracer.conversation.engine import ConversationEngine
     from qracer.memory.session_logger import SessionLogger
     from qracer.watchlist import Watchlist
@@ -497,13 +628,17 @@ def repl() -> None:
     reports_dir = _user_dir() / "reports"
     watchlist = Watchlist(_user_dir() / "watchlist.json")
 
+    # Price alerts
+    alert_store = AlertStore(_user_dir() / "alerts.json")
+    alert_monitor = AlertMonitor(alert_store, data_registry)
+
     engine = ConversationEngine(
         llm_registry,
         data_registry,
         session_logger=session_logger,
         report_dir=reports_dir,
     )
-    asyncio.run(_repl_loop(engine, watchlist))
+    asyncio.run(_repl_loop(engine, watchlist, alert_monitor=alert_monitor))
 
 
 if __name__ == "__main__":
