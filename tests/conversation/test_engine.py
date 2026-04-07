@@ -121,7 +121,7 @@ class TestAnalysisLoop:
         loop = AnalysisLoop(llm, data)
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
 
-        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("news")]
             result = await loop.run(intent, [_ok_result("price_event")])
 
@@ -138,7 +138,7 @@ class TestAnalysisLoop:
         loop = AnalysisLoop(llm, data, max_iterations=2)
         intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
 
-        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("news")]
             result = await loop.run(intent, [_ok_result("price_event")])
 
@@ -265,7 +265,7 @@ class TestConversationEngine:
 
         engine = ConversationEngine(llm, data)
 
-        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("price_event"), _ok_result("news")]
             response = await engine.query("Why did AAPL spike 5% today?")
 
@@ -290,7 +290,7 @@ class TestConversationEngine:
 
         engine = ConversationEngine(llm, DataRegistry())
 
-        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("macro")]
             await engine.query("Where are we in the rate cycle?")
 
@@ -329,8 +329,8 @@ class TestConversationEngine:
         engine = ConversationEngine(llm, DataRegistry(), portfolio_config=portfolio)
 
         with (
-            patch("qracer.conversation.engine.invoke_tools") as mock_invoke,
-            patch("qracer.conversation.engine.pipeline.risk_check") as mock_risk,
+            patch("qracer.conversation.handlers.invoke_tools") as mock_invoke,
+            patch("qracer.conversation.handlers.pipeline.risk_check") as mock_risk,
         ):
             mock_invoke.return_value = [_ok_result("price_event")]
             mock_risk.return_value = _ok_result(
@@ -377,8 +377,8 @@ class TestConversationEngine:
         engine = ConversationEngine(llm, DataRegistry())
 
         with (
-            patch("qracer.conversation.engine.invoke_tools") as mock_invoke,
-            patch("qracer.conversation.engine.pipeline.risk_check") as mock_risk,
+            patch("qracer.conversation.handlers.invoke_tools") as mock_invoke,
+            patch("qracer.conversation.handlers.pipeline.risk_check") as mock_risk,
         ):
             mock_invoke.return_value = [_ok_result("price_event")]
             await engine.query("Analyze AAPL")
@@ -406,8 +406,8 @@ class TestConversationEngine:
         engine = ConversationEngine(llm, DataRegistry(), portfolio_config=portfolio)
 
         with (
-            patch("qracer.conversation.engine.invoke_tools") as mock_invoke,
-            patch("qracer.conversation.engine.pipeline.risk_check") as mock_risk,
+            patch("qracer.conversation.handlers.invoke_tools") as mock_invoke,
+            patch("qracer.conversation.handlers.pipeline.risk_check") as mock_risk,
         ):
             mock_invoke.return_value = [_ok_result("price_event")]
             await engine.query("Analyze AAPL")
@@ -429,7 +429,7 @@ class TestConversationEngine:
             confidence_threshold=0.9,
         )
 
-        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
             mock_invoke.return_value = []
             response = await engine.query("test")
 
@@ -508,7 +508,7 @@ class TestConversationEngineComparison:
         llm = _mock_llm_registry({Role.RESEARCHER: intent_resp, Role.STRATEGIST: comparison_resp})
         engine = ConversationEngine(llm, DataRegistry())
 
-        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("price_event"), _ok_result("fundamentals")]
             response = await engine.query("Compare AAPL and MSFT")
 
@@ -531,7 +531,7 @@ class TestConversationEngineComparison:
         )
         engine = ConversationEngine(llm, DataRegistry())
 
-        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
             mock_invoke.return_value = [_ok_result("price_event")]
             response = await engine.query("Compare AAPL")
 
@@ -564,7 +564,7 @@ class TestSessionLogging:
         )
         engine = ConversationEngine(llm, DataRegistry(), session_logger=session_logger)
 
-        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
             mock_invoke.return_value = []
             await engine.query("What is inflation?")
 
@@ -593,7 +593,7 @@ class TestSessionLogging:
         )
         engine = ConversationEngine(llm, DataRegistry(), session_logger=session_logger)
 
-        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
             mock_invoke.return_value = []
             await engine.query("Query 1")
             await engine.query("Query 2")
@@ -616,7 +616,7 @@ class TestSessionLogging:
         )
         engine = ConversationEngine(llm, DataRegistry())  # no session_logger
 
-        with patch("qracer.conversation.engine.invoke_tools") as mock_invoke:
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
             mock_invoke.return_value = []
             response = await engine.query("Test query")
 

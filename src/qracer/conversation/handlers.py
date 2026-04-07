@@ -1,0 +1,209 @@
+"""Intent handlers — extracted from ConversationEngine for single-responsibility.
+
+Each handler processes one category of intent and returns a HandlerResult.
+The Engine takes care of history, session logging, and compaction.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass
+
+from qracer.config.models import PortfolioConfig
+from qracer.conversation.analysis_loop import AnalysisLoop, AnalysisResult
+from qracer.conversation.dispatcher import invoke_tools
+from qracer.conversation.intent import Intent, IntentType
+from qracer.conversation.quickpath import format_portfolio, format_quickpath
+from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynthesizer
+from qracer.data.providers import PriceProvider
+from qracer.data.registry import DataRegistry
+from qracer.llm.registry import LLMRegistry
+from qracer.memory.memory_searcher import MemorySearcher
+from qracer.models import ToolResult, TradeThesis
+from qracer.risk.calculator import RiskCalculator
+from qracer.tools import pipeline
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class HandlerResult:
+    """Return type for all intent handlers."""
+
+    text: str
+    analysis: AnalysisResult
+
+
+class PortfolioHandler:
+    """Handles PORTFOLIO_CHECK intent — fetch prices, show P&L summary."""
+
+    def __init__(
+        self,
+        data_registry: DataRegistry,
+        portfolio_config: PortfolioConfig,
+    ) -> None:
+        self._data = data_registry
+        self._portfolio_config = portfolio_config
+
+    async def handle(self, intent: Intent) -> HandlerResult:
+        if not self._portfolio_config.holdings:
+            text = (
+                "No holdings configured.\n"
+                "Add holdings to ~/.qracer/portfolio.toml to use portfolio tracking."
+            )
+            return HandlerResult(text=text, analysis=AnalysisResult(confidence=1.0, iterations=0))
+
+        prices: dict[str, float] = {}
+        for holding in self._portfolio_config.holdings:
+            try:
+                price = await self._data.async_get_with_fallback(
+                    PriceProvider, "get_price", holding.ticker
+                )
+                prices[holding.ticker] = price
+            except Exception:
+                logger.warning("Could not fetch price for %s", holding.ticker)
+
+        calculator = RiskCalculator(self._portfolio_config)
+        snapshot = calculator.build_snapshot(prices)
+        text = format_portfolio(snapshot)
+        return HandlerResult(text=text, analysis=AnalysisResult(confidence=1.0, iterations=0))
+
+
+class QuickPathHandler:
+    """Handles QuickPath intents — template-based response, no LLM."""
+
+    def __init__(
+        self,
+        data_registry: DataRegistry,
+        memory_searcher: MemorySearcher | None = None,
+    ) -> None:
+        self._data = data_registry
+        self._memory_searcher = memory_searcher
+
+    async def handle(self, intent: Intent) -> HandlerResult:
+        results = await invoke_tools(
+            intent.tools, intent, self._data, memory_searcher=self._memory_searcher
+        )
+        text = format_quickpath(intent, results)
+        return HandlerResult(
+            text=text, analysis=AnalysisResult(results=results, confidence=1.0, iterations=0)
+        )
+
+
+class ComparisonHandler:
+    """Handles COMPARISON intent — per-ticker analysis + comparison table."""
+
+    def __init__(
+        self,
+        data_registry: DataRegistry,
+        synthesizer: ComparisonSynthesizer,
+        memory_searcher: MemorySearcher | None = None,
+    ) -> None:
+        self._data = data_registry
+        self._synthesizer = synthesizer
+        self._memory_searcher = memory_searcher
+
+    async def handle(self, intent: Intent) -> HandlerResult:
+        single_intents = [
+            Intent(
+                intent_type=IntentType.COMPARISON,
+                tickers=[ticker],
+                tools=intent.tools,
+                raw_query=intent.raw_query,
+            )
+            for ticker in intent.tickers
+        ]
+        gathered = await asyncio.gather(
+            *[
+                invoke_tools(si.tools, si, self._data, memory_searcher=self._memory_searcher)
+                for si in single_intents
+            ]
+        )
+        per_ticker_results: dict[str, list[ToolResult]] = dict(zip(intent.tickers, gathered))
+        all_results = [r for results in per_ticker_results.values() for r in results]
+        analysis = AnalysisResult(results=all_results, confidence=0.7, iterations=1)
+        text = await self._synthesizer.synthesize(intent, per_ticker_results)
+        return HandlerResult(text=text, analysis=analysis)
+
+
+class StandardHandler:
+    """Handles standard DeepPath analysis — full pipeline with trade thesis + risk check."""
+
+    def __init__(
+        self,
+        data_registry: DataRegistry,
+        llm_registry: LLMRegistry,
+        analysis_loop: AnalysisLoop,
+        synthesizer: ResponseSynthesizer,
+        portfolio_config: PortfolioConfig,
+        memory_searcher: MemorySearcher | None = None,
+    ) -> None:
+        self._data = data_registry
+        self._llm = llm_registry
+        self._analysis_loop = analysis_loop
+        self._synthesizer = synthesizer
+        self._portfolio_config = portfolio_config
+        self._memory_searcher = memory_searcher
+
+    async def handle(self, intent: Intent) -> HandlerResult:
+        # Invoke initial pipeline tools.
+        initial_results = await invoke_tools(
+            intent.tools, intent, self._data, memory_searcher=self._memory_searcher
+        )
+
+        # Run analysis loop.
+        analysis = await self._analysis_loop.run(intent, initial_results)
+        logger.info(
+            "Analysis complete: confidence=%.2f iterations=%d",
+            analysis.confidence,
+            analysis.iterations,
+        )
+
+        # Trade thesis generation (step 7) — only when tickers are present.
+        if intent.tickers:
+            thesis_result = await pipeline.trade_thesis(
+                intent.tickers[0], analysis.results, self._llm
+            )
+            analysis.results.append(thesis_result)
+            if thesis_result.success and thesis_result.data.get("thesis"):
+                td = thesis_result.data["thesis"]
+                try:
+                    analysis.trade_thesis = TradeThesis(
+                        ticker=td["ticker"],
+                        entry_zone=tuple(td["entry_zone"]),  # type: ignore[arg-type]
+                        target_price=td["target_price"],
+                        stop_loss=td["stop_loss"],
+                        risk_reward_ratio=td["risk_reward_ratio"],
+                        catalyst=td["catalyst"],
+                        catalyst_date=td.get("catalyst_date"),
+                        conviction=td["conviction"],
+                        summary=td["summary"],
+                    )
+                except (KeyError, ValueError, TypeError):
+                    logger.warning("Failed to reconstruct TradeThesis from result")
+            elif not thesis_result.success:
+                logger.warning(
+                    "Trade thesis generation failed for %s: %s",
+                    intent.tickers[0],
+                    thesis_result.error,
+                )
+                reason = thesis_result.error or "unknown error"
+                if analysis.early_exit_reason:
+                    analysis.early_exit_reason += f"; Trade thesis failed: {reason}"
+                else:
+                    analysis.early_exit_reason = f"Trade thesis failed: {reason}"
+
+        # Risk check (step 8) — only when a trade thesis was produced.
+        if analysis.trade_thesis is not None and self._portfolio_config.holdings:
+            risk_result = await pipeline.risk_check(
+                analysis.trade_thesis.ticker,
+                analysis.trade_thesis,
+                self._data,
+                self._portfolio_config,
+            )
+            analysis.results.append(risk_result)
+
+        # Synthesize response.
+        text = await self._synthesizer.synthesize(intent, analysis)
+        return HandlerResult(text=text, analysis=analysis)
