@@ -66,22 +66,31 @@ class TestAlertEvaluate:
 class TestAlertDescribe:
     def test_above(self) -> None:
         alert = Alert(
-            id="x", ticker="TSLA", condition=AlertCondition.ABOVE,
-            threshold=300.0, created_at="2026-01-01T00:00:00+00:00",
+            id="x",
+            ticker="TSLA",
+            condition=AlertCondition.ABOVE,
+            threshold=300.0,
+            created_at="2026-01-01T00:00:00+00:00",
         )
         assert alert.describe() == "TSLA goes above 300.0"
 
     def test_below(self) -> None:
         alert = Alert(
-            id="x", ticker="TSLA", condition=AlertCondition.BELOW,
-            threshold=200.0, created_at="2026-01-01T00:00:00+00:00",
+            id="x",
+            ticker="TSLA",
+            condition=AlertCondition.BELOW,
+            threshold=200.0,
+            created_at="2026-01-01T00:00:00+00:00",
         )
         assert alert.describe() == "TSLA goes below 200.0"
 
     def test_change_pct(self) -> None:
         alert = Alert(
-            id="x", ticker="TSLA", condition=AlertCondition.CHANGE_PCT,
-            threshold=5.0, created_at="2026-01-01T00:00:00+00:00",
+            id="x",
+            ticker="TSLA",
+            condition=AlertCondition.CHANGE_PCT,
+            threshold=5.0,
+            created_at="2026-01-01T00:00:00+00:00",
         )
         assert alert.describe() == "TSLA changes by 5.0%"
 
