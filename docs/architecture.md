@@ -96,7 +96,7 @@ class ProviderPlugin(Protocol):
 
 | Type | Location | Install |
 |------|----------|---------|
-| Built-in | `src/qracer/data/adapters/` | Included in project |
+| Built-in | `qracer/data/adapters/` | Included in project |
 | Plugin | External package | `uv add qracer-provider-*` |
 
 ### Plugin Discovery

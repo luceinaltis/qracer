@@ -6,7 +6,7 @@ The qracer workspace is a single directory containing all project files.
 
 ```text
 tracer/
-├── src/qracer/       # Source code
+├── qracer/           # Source code
 ├── tests/            # Test suite
 ├── docs/             # Design documentation
 ├── skills/           # Agent skill definitions
