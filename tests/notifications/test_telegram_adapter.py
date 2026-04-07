@@ -8,7 +8,6 @@ import pytest
 from qracer.notifications.providers import Notification, NotificationCategory
 from qracer.notifications.telegram_adapter import TelegramAdapter, _format_message
 
-
 # ---------------------------------------------------------------------------
 # Construction validation
 # ---------------------------------------------------------------------------
@@ -80,7 +79,8 @@ class TestTelegramSend:
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("qracer.notifications.telegram_adapter.urllib.request.urlopen", return_value=mock_resp) as mock_open:
+        target = "qracer.notifications.telegram_adapter.urllib.request.urlopen"
+        with patch(target, return_value=mock_resp) as mock_open:
             result = await adapter.send(_make_notification())
 
         assert result is True
@@ -117,7 +117,8 @@ class TestTelegramSend:
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("qracer.notifications.telegram_adapter.urllib.request.urlopen", return_value=mock_resp):
+        target = "qracer.notifications.telegram_adapter.urllib.request.urlopen"
+        with patch(target, return_value=mock_resp):
             result = await adapter.send(_make_notification())
 
         assert result is False
