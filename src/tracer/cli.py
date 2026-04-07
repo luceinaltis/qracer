@@ -26,6 +26,7 @@ BANNER = """\
 ║  Tracer — conversational alpha engine    ║
 ╚══════════════════════════════════════════╝
 Type your query, or 'quit' to exit.
+Commands: save [md|json|pdf]
 """
 
 
@@ -257,6 +258,21 @@ async def _repl_loop(engine: object) -> None:
         if user_input.lower() in ("quit", "exit", "q"):
             click.echo("Goodbye.")
             break
+
+        # Handle save commands: "save pdf", "/save json", etc.
+        normalised = user_input.lstrip("/").lower()
+        if normalised.startswith("save"):
+            parts = normalised.split()
+            fmt = parts[1] if len(parts) > 1 else "md"
+            if fmt not in ("md", "json", "pdf"):
+                click.echo(f"Unknown format '{fmt}'. Use: md, json, pdf\n")
+                continue
+            path = engine.save_last_report(fmt)  # type: ignore[attr-defined]
+            if path is None:
+                click.echo("No analysis to save yet. Run a query first.\n")
+            else:
+                click.echo(f"Report saved to {path}\n")
+            continue
 
         try:
             response = await engine.query(user_input)  # type: ignore[attr-defined]

@@ -11,6 +11,7 @@ from tracer.conversation.intent import (
     IntentParser,
     IntentType,
 )
+from tracer.conversation.report_exporter import ReportExporter
 
 __all__ = [
     "AnalysisLoop",
@@ -21,5 +22,6 @@ __all__ = [
     "Intent",
     "IntentParser",
     "IntentType",
+    "ReportExporter",
     "ResponseSynthesizer",
 ]

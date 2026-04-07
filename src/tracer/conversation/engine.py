@@ -12,9 +12,12 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from pathlib import Path
+
 from tracer.config.models import PortfolioConfig
 from tracer.conversation.context import ConversationContext, extract_context, resolve_pronoun
 from tracer.conversation.intent import Intent, IntentParser
+from tracer.conversation.report_exporter import ReportExporter
 from tracer.data.registry import DataRegistry, build_registry
 from tracer.llm.providers import CompletionRequest, CompletionResponse, Message, Role
 from tracer.llm.registry import LLMRegistry
@@ -332,6 +335,8 @@ class ConversationEngine:
         self._history: list[dict] = []
         self._session_logger = session_logger
         self._context: ConversationContext = ConversationContext()
+        self._last_response: EngineResponse | None = None
+        self._exporter = ReportExporter()
 
     @property
     def history(self) -> list[dict]:
@@ -417,11 +422,35 @@ class ConversationEngine:
 
         self._history.append({"role": "assistant", "content": text})
 
-        return EngineResponse(
+        resp = EngineResponse(
             text=text,
             intent=intent,
             analysis=analysis,
         )
+        self._last_response = resp
+        return resp
+
+    def save_last_report(self, fmt: str = "md", output_dir: Path | None = None) -> Path | None:
+        """Save the most recent analysis response to a file.
+
+        Args:
+            fmt: Output format — ``"md"``, ``"json"``, or ``"pdf"``.
+            output_dir: Override the default output directory.
+
+        Returns:
+            Path to the saved file, or ``None`` if no response is available.
+        """
+        if self._last_response is None:
+            return None
+
+        if output_dir is not None:
+            self._exporter._output_dir = output_dir
+
+        if fmt == "json":
+            return self._exporter.save_json(self._last_response)
+        if fmt == "pdf":
+            return self._exporter.save_pdf(self._last_response)
+        return self._exporter.save_markdown(self._last_response)
 
 
 def _format_evidence(results: list[ToolResult]) -> str:
