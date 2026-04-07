@@ -26,5 +26,4 @@ __all__ = [
     "NewsProvider",
     "PriceProvider",
     "YfinanceAdapter",
-    "FredAdapter",
 ]
