@@ -6,7 +6,6 @@ to process natural-language queries end-to-end.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -25,20 +24,20 @@ from qracer.conversation.context import (
     is_stale,
     resolve_pronoun,
 )
-from qracer.conversation.dispatcher import invoke_tools
+from qracer.conversation.handlers import (
+    ComparisonHandler,
+    PortfolioHandler,
+    QuickPathHandler,
+    StandardHandler,
+)
 from qracer.conversation.intent import QUICKPATH_INTENTS, Intent, IntentParser, IntentType
-from qracer.conversation.quickpath import format_portfolio, format_quickpath
 from qracer.conversation.report_exporter import ReportExporter
 from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynthesizer
-from qracer.data.providers import PriceProvider
 from qracer.data.registry import DataRegistry
 from qracer.llm.registry import LLMRegistry
 from qracer.memory.memory_searcher import MemorySearcher
 from qracer.memory.session_compactor import SessionCompactor
 from qracer.memory.session_logger import SessionLogger, TurnRecord
-from qracer.models import ToolResult, TradeThesis
-from qracer.risk.calculator import RiskCalculator
-from qracer.tools import pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -72,22 +71,39 @@ class ConversationEngine:
         memory_searcher: MemorySearcher | None = None,
     ) -> None:
         self._llm = llm_registry
+        self._data = data_registry
         self._intent_parser = IntentParser(llm_registry)
-        self._analysis_loop = AnalysisLoop(
+        self._portfolio_config = portfolio_config or PortfolioConfig()
+        self._memory_searcher = memory_searcher
+
+        analysis_loop = AnalysisLoop(
             llm_registry,
             data_registry,
             max_iterations=max_iterations,
             confidence_threshold=confidence_threshold,
         )
-        self._synthesizer = ResponseSynthesizer(llm_registry)
-        self._comparison_synthesizer = ComparisonSynthesizer(llm_registry)
-        self._data = data_registry
-        self._portfolio_config = portfolio_config or PortfolioConfig()
+        synthesizer = ResponseSynthesizer(llm_registry)
+        comparison_synthesizer = ComparisonSynthesizer(llm_registry)
+
+        # Intent handlers — each owns one branch of the query flow.
+        self._portfolio_handler = PortfolioHandler(data_registry, self._portfolio_config)
+        self._quickpath_handler = QuickPathHandler(data_registry, memory_searcher)
+        self._comparison_handler = ComparisonHandler(
+            data_registry, comparison_synthesizer, memory_searcher
+        )
+        self._standard_handler = StandardHandler(
+            data_registry,
+            llm_registry,
+            analysis_loop,
+            synthesizer,
+            self._portfolio_config,
+            memory_searcher,
+        )
+
         self._history: list[dict] = []
         self._session_logger = session_logger
         self._compactor = SessionCompactor(llm_registry) if session_logger else None
         self._report_exporter = ReportExporter(report_dir) if report_dir else None
-        self._memory_searcher = memory_searcher
         self._context: ConversationContext = ConversationContext()
         self._turn_counter = 0
         self._last_response: EngineResponse | None = None
@@ -96,16 +112,31 @@ class ConversationEngine:
     def update_registries(self, llm_registry: LLMRegistry, data_registry: DataRegistry) -> None:
         """Hot-swap registries when config changes at runtime."""
         self._llm = llm_registry
+        self._data = data_registry
         self._intent_parser = IntentParser(llm_registry)
-        self._analysis_loop = AnalysisLoop(
+
+        analysis_loop = AnalysisLoop(
             llm_registry,
             data_registry,
-            max_iterations=self._analysis_loop._max_iterations,
-            confidence_threshold=self._analysis_loop._confidence_threshold,
+            max_iterations=self._standard_handler._analysis_loop._max_iterations,
+            confidence_threshold=self._standard_handler._analysis_loop._confidence_threshold,
         )
-        self._synthesizer = ResponseSynthesizer(llm_registry)
-        self._comparison_synthesizer = ComparisonSynthesizer(llm_registry)
-        self._data = data_registry
+        synthesizer = ResponseSynthesizer(llm_registry)
+        comparison_synthesizer = ComparisonSynthesizer(llm_registry)
+
+        self._portfolio_handler = PortfolioHandler(data_registry, self._portfolio_config)
+        self._quickpath_handler = QuickPathHandler(data_registry, self._memory_searcher)
+        self._comparison_handler = ComparisonHandler(
+            data_registry, comparison_synthesizer, self._memory_searcher
+        )
+        self._standard_handler = StandardHandler(
+            data_registry,
+            llm_registry,
+            analysis_loop,
+            synthesizer,
+            self._portfolio_config,
+            self._memory_searcher,
+        )
         self._config_version += 1
 
     @property
@@ -230,155 +261,21 @@ class ConversationEngine:
             intent.tools,
         )
 
-        # 2. Portfolio check — special QuickPath that uses RiskCalculator.
+        # 2. Route to the appropriate handler.
         if intent.intent_type == IntentType.PORTFOLIO_CHECK:
-            response = await self._handle_portfolio(intent)
-        # 2b. QuickPath: template-based response, no AnalysisLoop.
+            result = await self._portfolio_handler.handle(intent)
         elif intent.intent_type in QUICKPATH_INTENTS:
-            response = await self._handle_quickpath(intent)
-        # 3. Comparison branch: per-ticker analysis + comparison table.
+            result = await self._quickpath_handler.handle(intent)
         elif intent.intent_type == IntentType.COMPARISON and len(intent.tickers) >= 2:
-            response = await self._handle_comparison(intent)
+            result = await self._comparison_handler.handle(intent)
         else:
-            # 4. Standard analysis path (DeepPath).
-            response = await self._handle_standard(intent)
+            result = await self._standard_handler.handle(intent)
 
+        # 3. Common post-processing: history, logging, compaction.
+        self._history.append({"role": "assistant", "content": result.text})
+        self._log_turn("assistant", result.text)
+        await self._maybe_compact()
+
+        response = EngineResponse(text=result.text, intent=intent, analysis=result.analysis)
         self._last_response = response
         return response
-
-    async def _handle_portfolio(self, intent: Intent) -> EngineResponse:
-        """QuickPath: fetch prices for all holdings and show P&L summary."""
-        if not self._portfolio_config.holdings:
-            text = (
-                "No holdings configured.\n"
-                "Add holdings to ~/.qracer/portfolio.toml to use portfolio tracking."
-            )
-            analysis = AnalysisResult(confidence=1.0, iterations=0)
-            self._history.append({"role": "assistant", "content": text})
-            self._log_turn("assistant", text)
-            return EngineResponse(text=text, intent=intent, analysis=analysis)
-
-        # Fetch live prices for all holdings.
-        prices: dict[str, float] = {}
-        for holding in self._portfolio_config.holdings:
-            try:
-                price = await self._data.async_get_with_fallback(
-                    PriceProvider, "get_price", holding.ticker
-                )
-                prices[holding.ticker] = price
-            except Exception:
-                logger.warning("Could not fetch price for %s", holding.ticker)
-
-        calculator = RiskCalculator(self._portfolio_config)
-        snapshot = calculator.build_snapshot(prices)
-        text = format_portfolio(snapshot)
-
-        analysis = AnalysisResult(confidence=1.0, iterations=0)
-        self._history.append({"role": "assistant", "content": text})
-        self._log_turn("assistant", text)
-        return EngineResponse(text=text, intent=intent, analysis=analysis)
-
-    async def _handle_quickpath(self, intent: Intent) -> EngineResponse:
-        """QuickPath: fetch 1-2 tools, format with template, no LLM."""
-        results = await invoke_tools(
-            intent.tools, intent, self._data, memory_searcher=self._memory_searcher
-        )
-        text = format_quickpath(intent, results)
-        analysis = AnalysisResult(results=results, confidence=1.0, iterations=0)
-        self._history.append({"role": "assistant", "content": text})
-        self._log_turn("assistant", text)
-        return EngineResponse(text=text, intent=intent, analysis=analysis)
-
-    async def _handle_comparison(self, intent: Intent) -> EngineResponse:
-        """Run per-ticker analysis concurrently and synthesize comparison."""
-        single_intents = [
-            Intent(
-                intent_type=IntentType.COMPARISON,
-                tickers=[ticker],
-                tools=intent.tools,
-                raw_query=intent.raw_query,
-            )
-            for ticker in intent.tickers
-        ]
-        gathered = await asyncio.gather(
-            *[
-                invoke_tools(si.tools, si, self._data, memory_searcher=self._memory_searcher)
-                for si in single_intents
-            ]
-        )
-        per_ticker_results: dict[str, list[ToolResult]] = dict(zip(intent.tickers, gathered))
-        all_results = [r for results in per_ticker_results.values() for r in results]
-        analysis = AnalysisResult(results=all_results, confidence=0.7, iterations=1)
-        text = await self._comparison_synthesizer.synthesize(intent, per_ticker_results)
-        self._history.append({"role": "assistant", "content": text})
-        self._log_turn("assistant", text)
-        await self._maybe_compact()
-        return EngineResponse(text=text, intent=intent, analysis=analysis)
-
-    async def _handle_standard(self, intent: Intent) -> EngineResponse:
-        """Run the standard analysis pipeline (DeepPath)."""
-        # Invoke initial pipeline tools.
-        initial_results = await invoke_tools(
-            intent.tools, intent, self._data, memory_searcher=self._memory_searcher
-        )
-
-        # Run analysis loop.
-        analysis = await self._analysis_loop.run(intent, initial_results)
-        logger.info(
-            "Analysis complete: confidence=%.2f iterations=%d",
-            analysis.confidence,
-            analysis.iterations,
-        )
-
-        # Trade thesis generation (step 7) — only when tickers are present.
-        if intent.tickers:
-            thesis_result = await pipeline.trade_thesis(
-                intent.tickers[0], analysis.results, self._llm
-            )
-            analysis.results.append(thesis_result)
-            if thesis_result.success and thesis_result.data.get("thesis"):
-                td = thesis_result.data["thesis"]
-                try:
-                    analysis.trade_thesis = TradeThesis(
-                        ticker=td["ticker"],
-                        entry_zone=tuple(td["entry_zone"]),  # type: ignore[arg-type]
-                        target_price=td["target_price"],
-                        stop_loss=td["stop_loss"],
-                        risk_reward_ratio=td["risk_reward_ratio"],
-                        catalyst=td["catalyst"],
-                        catalyst_date=td.get("catalyst_date"),
-                        conviction=td["conviction"],
-                        summary=td["summary"],
-                    )
-                except (KeyError, ValueError, TypeError):
-                    logger.warning("Failed to reconstruct TradeThesis from result")
-            elif not thesis_result.success:
-                logger.warning(
-                    "Trade thesis generation failed for %s: %s",
-                    intent.tickers[0],
-                    thesis_result.error,
-                )
-                # Surface the failure reason so the synthesizer includes it.
-                reason = thesis_result.error or "unknown error"
-                if analysis.early_exit_reason:
-                    analysis.early_exit_reason += f"; Trade thesis failed: {reason}"
-                else:
-                    analysis.early_exit_reason = f"Trade thesis failed: {reason}"
-
-        # Risk check (step 8) — only when a trade thesis was produced.
-        if analysis.trade_thesis is not None and self._portfolio_config.holdings:
-            risk_result = await pipeline.risk_check(
-                analysis.trade_thesis.ticker,
-                analysis.trade_thesis,
-                self._data,
-                self._portfolio_config,
-            )
-            analysis.results.append(risk_result)
-
-        # Synthesize response.
-        text = await self._synthesizer.synthesize(intent, analysis)
-        self._history.append({"role": "assistant", "content": text})
-        self._log_turn("assistant", text)
-        await self._maybe_compact()
-
-        return EngineResponse(text=text, intent=intent, analysis=analysis)
