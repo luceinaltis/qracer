@@ -33,6 +33,7 @@ from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynth
 from qracer.data.providers import PriceProvider
 from qracer.data.registry import DataRegistry
 from qracer.llm.registry import LLMRegistry
+from qracer.memory.memory_searcher import MemorySearcher
 from qracer.memory.session_compactor import SessionCompactor
 from qracer.memory.session_logger import SessionLogger, TurnRecord
 from qracer.models import ToolResult, TradeThesis
@@ -68,7 +69,7 @@ class ConversationEngine:
         confidence_threshold: float = CONFIDENCE_THRESHOLD,
         session_logger: SessionLogger | None = None,
         report_dir: Path | None = None,
-        memory_searcher: object | None = None,
+        memory_searcher: MemorySearcher | None = None,
     ) -> None:
         self._llm = llm_registry
         self._intent_parser = IntentParser(llm_registry)
