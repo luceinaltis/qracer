@@ -428,6 +428,92 @@ class TestRiskCalculatorCorrelationIntegration:
         assert pct == 3.0
 
     @pytest.mark.asyncio
+    async def test_build_exposure_async_sets_flag_on_failure(self) -> None:
+        from qracer.config.models import Holding, PortfolioConfig, PortfolioLimits
+        from qracer.risk.calculator import RiskCalculator
+
+        provider = AsyncMock()
+        provider.get_ohlcv = AsyncMock(side_effect=RuntimeError("network error"))
+
+        engine = CorrelationEngine(price_provider=provider)
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[Holding(ticker="AAPL", shares=100, avg_cost=150.0)],
+            limits=PortfolioLimits(),
+        )
+        calc = RiskCalculator(config, correlation_engine=engine)
+        snapshot = calc.build_snapshot({"AAPL": 180.0})
+        exposure = await calc.build_exposure_async(snapshot)
+
+        assert exposure.correlation_data_unavailable is True
+        assert exposure.portfolio_beta is None
+        assert exposure.correlation_avg is None
+
+    @pytest.mark.asyncio
+    async def test_build_exposure_async_flag_false_on_success(self) -> None:
+        from qracer.config.models import Holding, PortfolioConfig, PortfolioLimits
+        from qracer.risk.calculator import RiskCalculator
+
+        provider = AsyncMock()
+        closes = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5]
+        provider.get_ohlcv = AsyncMock(return_value=_make_bars(closes))
+
+        engine = CorrelationEngine(price_provider=provider)
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[Holding(ticker="AAPL", shares=100, avg_cost=150.0)],
+            limits=PortfolioLimits(),
+        )
+        calc = RiskCalculator(config, correlation_engine=engine)
+        snapshot = calc.build_snapshot({"AAPL": 180.0})
+        exposure = await calc.build_exposure_async(snapshot)
+
+        assert exposure.correlation_data_unavailable is False
+        assert exposure.portfolio_beta is not None
+
+    @pytest.mark.asyncio
+    async def test_assess_async_populates_warnings_on_failure(self) -> None:
+        from qracer.config.models import Holding, PortfolioConfig, PortfolioLimits
+        from qracer.risk.calculator import RiskCalculator
+
+        provider = AsyncMock()
+        provider.get_ohlcv = AsyncMock(side_effect=RuntimeError("network error"))
+
+        engine = CorrelationEngine(price_provider=provider)
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[Holding(ticker="AAPL", shares=100, avg_cost=150.0)],
+            limits=PortfolioLimits(),
+        )
+        calc = RiskCalculator(config, correlation_engine=engine)
+        result = await calc.assess_async({"AAPL": 180.0})
+
+        assert result.exposure.correlation_data_unavailable is True
+        assert len(result.warnings) == 1
+        assert "Correlation/beta data unavailable" in result.warnings[0]
+
+    @pytest.mark.asyncio
+    async def test_assess_async_no_warnings_on_success(self) -> None:
+        from qracer.config.models import Holding, PortfolioConfig, PortfolioLimits
+        from qracer.risk.calculator import RiskCalculator
+
+        provider = AsyncMock()
+        closes = [100.0, 101.0, 102.0, 101.5, 103.0]
+        provider.get_ohlcv = AsyncMock(return_value=_make_bars(closes))
+
+        engine = CorrelationEngine(price_provider=provider)
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[Holding(ticker="AAPL", shares=100, avg_cost=150.0)],
+            limits=PortfolioLimits(),
+        )
+        calc = RiskCalculator(config, correlation_engine=engine)
+        result = await calc.assess_async({"AAPL": 180.0})
+
+        assert result.exposure.correlation_data_unavailable is False
+        assert result.warnings == []
+
+    @pytest.mark.asyncio
     async def test_assess_async(self) -> None:
         from qracer.config.models import Holding, PortfolioConfig, PortfolioLimits
         from qracer.risk.calculator import RiskCalculator

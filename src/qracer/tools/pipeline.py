@@ -394,7 +394,7 @@ async def risk_check(
         missing_prices = [h.ticker for h in config.holdings if h.ticker not in prices]
         if missing_prices:
             caveats.append(f"Price unavailable for: {', '.join(missing_prices)}")
-        if exposure.portfolio_beta == 0.0 and len(snapshot.holdings) > 0:
+        if exposure.correlation_data_unavailable:
             caveats.append(
                 "Correlation/beta data unavailable — sizing without correlation adjustment"
             )
