@@ -4,7 +4,7 @@ Long-running service that executes scheduled tasks and checks price alerts witho
 
 ## Architecture
 
-```
+```text
 ~/.qracer/ (shared state)
 ├── tasks.json       ← TaskStore (hot-reloaded on mtime change)
 ├── alerts.json      ← AlertStore (hot-reloaded on mtime change)
@@ -41,7 +41,7 @@ Each tick (every 1 second, throttled by check intervals):
 2. **Task check**: Runs due scheduled tasks → notifies on failure
 
 Notifications are sent via configured channels (e.g., Telegram). Configure in `~/.qracer/credentials.env`:
-```
+```bash
 TELEGRAM_BOT_TOKEN=your-token
 TELEGRAM_CHAT_ID=your-chat-id
 ```
