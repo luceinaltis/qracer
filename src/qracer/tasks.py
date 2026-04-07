@@ -55,9 +55,7 @@ class TaskActionType(str, Enum):
 
 _INTERVAL_RE = re.compile(r"^every\s+(\d+)\s*([mhd])$", re.IGNORECASE)
 _DAILY_RE = re.compile(r"^daily\s+(\d{1,2}):(\d{2})$", re.IGNORECASE)
-_WEEKLY_RE = re.compile(
-    r"^weekly\s+(\w+)\s+(\d{1,2}):(\d{2})$", re.IGNORECASE
-)
+_WEEKLY_RE = re.compile(r"^weekly\s+(\w+)\s+(\d{1,2}):(\d{2})$", re.IGNORECASE)
 
 
 def parse_schedule(spec: str, after: datetime | None = None) -> datetime:

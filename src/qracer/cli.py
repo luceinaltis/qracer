@@ -700,7 +700,7 @@ def _handle_schedule_command(user_input: str, executor: object | None) -> None:
             "Usage: schedule analyze TICKER every/at <time>\n"
             "       schedule news scan TICKER every/at <time>\n"
             "       schedule portfolio snapshot every/at <time>\n"
-            "       schedule query \"<text>\" every/at <time>\n"
+            '       schedule query "<text>" every/at <time>\n'
         )
         return
 
@@ -761,8 +761,7 @@ def _handle_schedule_command(user_input: str, executor: object | None) -> None:
 
     if action_type is None or not schedule_spec:
         click.echo(
-            "Could not parse schedule command.\n"
-            "Usage: schedule analyze TICKER every/at <time>\n"
+            "Could not parse schedule command.\nUsage: schedule analyze TICKER every/at <time>\n"
         )
         return
 
@@ -877,14 +876,11 @@ def repl() -> None:
         report_dir=reports_dir,
     )
 
-    task_executor = TaskExecutor(
-        task_store, data_registry, llm_registry, engine=engine
-    )
+    task_executor = TaskExecutor(task_store, data_registry, llm_registry, engine=engine)
 
     asyncio.run(
         _repl_loop(engine, watchlist, alert_monitor=alert_monitor, task_executor=task_executor)
     )
-
 
 
 # ---------------------------------------------------------------------------

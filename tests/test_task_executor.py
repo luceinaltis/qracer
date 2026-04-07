@@ -78,9 +78,7 @@ class TestTaskExecutor:
         assert store._tasks[0].next_run_at != "2020-01-01T00:00:00+00:00"
 
     async def test_once_task_completed(self, executor: TaskExecutor, store: TaskStore) -> None:
-        store.create(
-            TaskActionType.ANALYZE, {"ticker": "AAPL"}, "2020-01-01T09:00:00"
-        )
+        store.create(TaskActionType.ANALYZE, {"ticker": "AAPL"}, "2020-01-01T09:00:00")
         # Already due (past date)
 
         results = await executor.check()
@@ -120,8 +118,11 @@ class TestTaskExecutor:
         mock_engine.query = AsyncMock(return_value=mock_response)
 
         executor = TaskExecutor(
-            store, _make_registry(), LLMRegistry(),
-            engine=mock_engine, check_interval=0,
+            store,
+            _make_registry(),
+            LLMRegistry(),
+            engine=mock_engine,
+            check_interval=0,
         )
 
         store.create(TaskActionType.CUSTOM_QUERY, {"query": "macro outlook"}, "every 1d")
@@ -139,8 +140,11 @@ class TestTaskExecutor:
         mock_engine.query = AsyncMock(return_value=mock_response)
 
         executor = TaskExecutor(
-            store, _make_registry(), LLMRegistry(),
-            engine=mock_engine, check_interval=0,
+            store,
+            _make_registry(),
+            LLMRegistry(),
+            engine=mock_engine,
+            check_interval=0,
         )
 
         store.create(TaskActionType.ANALYZE, {"ticker": "TSLA"}, "every 2h")

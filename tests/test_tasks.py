@@ -128,9 +128,7 @@ class TestTask:
         assert task.is_due(now) is False
 
     def test_not_due_when_disabled(self) -> None:
-        task = self._make_task(
-            next_run_at="2026-04-07T08:00:00+00:00", enabled=False
-        )
+        task = self._make_task(next_run_at="2026-04-07T08:00:00+00:00", enabled=False)
         now = datetime(2026, 4, 7, 9, 0, tzinfo=timezone.utc)
         assert task.is_due(now) is False
 
@@ -232,9 +230,7 @@ class TestTaskStore:
         assert store._tasks[0].next_run_at != old_next
 
     def test_advance_recurring_fails_for_once(self, store: TaskStore) -> None:
-        task = store.create(
-            TaskActionType.ANALYZE, {"ticker": "AAPL"}, "2030-01-01T09:00:00"
-        )
+        task = store.create(TaskActionType.ANALYZE, {"ticker": "AAPL"}, "2030-01-01T09:00:00")
         assert not store.advance_recurring(task.id)
 
     def test_cancel(self, store: TaskStore) -> None:
