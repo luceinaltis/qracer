@@ -514,7 +514,14 @@ def repl() -> None:
 @main.command()
 def dashboard() -> None:
     """Launch the interactive TUI dashboard."""
-    from qracer.dashboard.app import QracerDashboard
+    try:
+        from qracer.dashboard.app import QracerDashboard
+    except ImportError:
+        click.echo(
+            "Dashboard requires the 'textual' package.\n"
+            "Install it with: pip install 'qracer[dashboard]'"
+        )
+        raise SystemExit(1)
 
     app = QracerDashboard()
     app.run()

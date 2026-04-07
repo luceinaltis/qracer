@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import logging
 from pathlib import Path
 
@@ -242,8 +243,6 @@ class HistoryPanel(VerticalScroll):
         for f in session_files:
             sid = f.stem
             mtime = f.stat().st_mtime
-            import datetime
-
             dt = datetime.datetime.fromtimestamp(mtime)
             line_count = sum(1 for _ in f.open())
             table.add_row(sid, dt.strftime("%Y-%m-%d %H:%M"), str(line_count))
