@@ -361,6 +361,9 @@ Tips:
   - Compare tickers: "Compare AAPL and MSFT"
   - Follow up naturally: "What about Samsung?", "More details?"
   - Set alerts: "alert AAPL above 200", "alert TSLA below 150"
+  - Schedule tasks: "schedule analyze AAPL every 1h", "schedule news scan TSLA at 2026-04-08T09:30"
+  - View tasks: "tasks"
+  - Cancel a task: "cancel-task <id>"
 
 Note: qracer provides research analysis only, not investment advice.
       It cannot execute trades or predict future prices.
@@ -371,13 +374,16 @@ async def _repl_loop(
     engine: object,
     watchlist: object,
     alert_monitor: object | None = None,
+    task_executor: object | None = None,
 ) -> None:
     """Run the interactive read-eval-print loop."""
     from qracer.alert_monitor import AlertMonitor
     from qracer.config.loader import has_config_changed
+    from qracer.task_executor import TaskExecutor
 
     click.echo(BANNER)
     monitor: AlertMonitor | None = alert_monitor  # type: ignore[assignment]
+    executor: TaskExecutor | None = task_executor  # type: ignore[assignment]
 
     while True:
         # Check alerts on each iteration if enough time has elapsed.
@@ -388,6 +394,16 @@ async def _repl_loop(
                     click.echo(f"🔔 {result.message}")
             except Exception:
                 logger.debug("Alert check failed", exc_info=True)
+
+        # Check scheduled tasks.
+        if executor and executor.should_check():
+            try:
+                task_results = await executor.check()
+                for tr in task_results:
+                    status = "✓" if tr.success else "✗"
+                    click.echo(f"📋 [{status}] {tr.task.describe()}: {tr.output or tr.error}")
+            except Exception:
+                logger.debug("Task check failed", exc_info=True)
 
         try:
             user_input = input("qracer> ").strip()
@@ -480,6 +496,19 @@ async def _repl_loop(
 
         if cmd.startswith(("remove-alert ", "/remove-alert ")):
             _handle_remove_alert(user_input, monitor)
+            continue
+
+        # Task commands
+        if cmd in ("tasks", "/tasks"):
+            _show_tasks(executor)
+            continue
+
+        if cmd.startswith(("schedule ", "/schedule ")):
+            _handle_schedule_command(user_input, executor)
+            continue
+
+        if cmd.startswith(("cancel-task ", "/cancel-task ")):
+            _handle_cancel_task(user_input, executor)
             continue
 
         # Show progress while query is processing.
@@ -611,6 +640,179 @@ def _show_watchlist(watchlist: object) -> None:
     click.echo()
 
 
+# ---------------------------------------------------------------------------
+# Task scheduling helpers
+# ---------------------------------------------------------------------------
+
+
+def _show_tasks(executor: object | None) -> None:
+    """Display all scheduled tasks."""
+    from qracer.task_executor import TaskExecutor
+
+    if executor is None:
+        click.echo("Task scheduler is not available.\n")
+        return
+
+    ex: TaskExecutor = executor  # type: ignore[assignment]
+    tasks = ex.store.get_all()
+    if not tasks:
+        click.echo("No scheduled tasks. Use 'schedule <action> every/at <time>' to create one.\n")
+        return
+
+    active = [t for t in tasks if t.enabled]
+    done = [t for t in tasks if not t.enabled]
+
+    if active:
+        click.echo(f"Active tasks ({len(active)}):")
+        for t in active:
+            next_run = t.next_run_at[:16] if t.next_run_at else "—"
+            click.echo(f"  [{t.id}] {t.describe()}  next={next_run}  runs={t.run_count}")
+
+    if done:
+        click.echo(f"Completed/cancelled ({len(done)}):")
+        for t in done:
+            click.echo(f"  [{t.id}] {t.describe()}  runs={t.run_count}")
+
+    click.echo()
+
+
+def _handle_schedule_command(user_input: str, executor: object | None) -> None:
+    """Parse and create a scheduled task.
+
+    Supported formats::
+
+        schedule analyze AAPL every 1h
+        schedule news scan TSLA at 2026-04-08T09:30
+        schedule portfolio snapshot daily 09:30
+        schedule query "macro outlook" every 1d
+    """
+    from qracer.task_executor import TaskExecutor
+    from qracer.tasks import TaskActionType, parse_schedule
+
+    if executor is None:
+        click.echo("Task scheduler is not available.\n")
+        return
+
+    ex: TaskExecutor = executor  # type: ignore[assignment]
+    parts = user_input.split(maxsplit=1)
+    if len(parts) < 2:
+        click.echo(
+            "Usage: schedule analyze TICKER every/at <time>\n"
+            "       schedule news scan TICKER every/at <time>\n"
+            "       schedule portfolio snapshot every/at <time>\n"
+            '       schedule query "<text>" every/at <time>\n'
+        )
+        return
+
+    body = parts[1].strip()
+
+    # Parse action and schedule from body
+    action_type: TaskActionType | None = None
+    action_params: dict = {}
+    schedule_spec: str = ""
+
+    if body.startswith("analyze "):
+        rest = body[len("analyze ") :]
+        # "AAPL every 1h" or "AAPL at 2026-..."
+        action_type = TaskActionType.ANALYZE
+        action_params, schedule_spec = _split_action_schedule(rest)
+        if "ticker" not in action_params:
+            token = rest.split()[0] if rest.split() else ""
+            action_params["ticker"] = token.upper()
+
+    elif body.startswith("news scan "):
+        rest = body[len("news scan ") :]
+        action_type = TaskActionType.NEWS_SCAN
+        action_params, schedule_spec = _split_action_schedule(rest)
+        if "ticker" not in action_params:
+            token = rest.split()[0] if rest.split() else ""
+            action_params["ticker"] = token.upper()
+
+    elif body.startswith("portfolio snapshot"):
+        rest = body[len("portfolio snapshot") :].strip()
+        action_type = TaskActionType.PORTFOLIO_SNAPSHOT
+        action_params = {}
+        schedule_spec = rest
+
+    elif body.startswith("cross market "):
+        rest = body[len("cross market ") :]
+        action_type = TaskActionType.CROSS_MARKET_SCAN
+        # "AAPL,TSLA every 1h"
+        tokens = rest.split()
+        tickers_str = tokens[0] if tokens else ""
+        action_params = {"tickers": [t.strip().upper() for t in tickers_str.split(",")]}
+        schedule_spec = " ".join(tokens[1:]) if len(tokens) > 1 else ""
+
+    elif body.startswith("query "):
+        rest = body[len("query ") :]
+        action_type = TaskActionType.CUSTOM_QUERY
+        # Extract quoted query and schedule
+        if rest.startswith('"'):
+            end_quote = rest.find('"', 1)
+            if end_quote > 0:
+                action_params = {"query": rest[1:end_quote]}
+                schedule_spec = rest[end_quote + 1 :].strip()
+            else:
+                click.echo("Missing closing quote for query.\n")
+                return
+        else:
+            click.echo('Usage: schedule query "your question" every/at <time>\n')
+            return
+
+    if action_type is None or not schedule_spec:
+        click.echo(
+            "Could not parse schedule command.\nUsage: schedule analyze TICKER every/at <time>\n"
+        )
+        return
+
+    # Strip leading "at " for one-time schedules
+    if schedule_spec.startswith("at "):
+        schedule_spec = schedule_spec[3:]
+
+    try:
+        parse_schedule(schedule_spec)
+    except ValueError as e:
+        click.echo(f"Invalid schedule: {e}\n")
+        return
+
+    task = ex.store.create(action_type, action_params, schedule_spec)
+    click.echo(f"Task scheduled: {task.describe()} [{task.id}]\n")
+
+
+def _split_action_schedule(text: str) -> tuple[dict, str]:
+    """Split 'TICKER every 1h' into ({"ticker": "TICKER"}, "every 1h")."""
+    for keyword in (" every ", " at ", " daily ", " weekly "):
+        idx = text.lower().find(keyword)
+        if idx >= 0:
+            ticker = text[:idx].strip().upper()
+            spec = text[idx:].strip()
+            if spec.startswith("at "):
+                spec = spec[3:]
+            return {"ticker": ticker}, spec
+    return {}, text
+
+
+def _handle_cancel_task(user_input: str, executor: object | None) -> None:
+    """Cancel a task by ID."""
+    from qracer.task_executor import TaskExecutor
+
+    if executor is None:
+        click.echo("Task scheduler is not available.\n")
+        return
+
+    ex: TaskExecutor = executor  # type: ignore[assignment]
+    parts = user_input.split()
+    if len(parts) < 2:
+        click.echo("Usage: cancel-task ID\n")
+        return
+
+    task_id = parts[1]
+    if ex.store.cancel(task_id):
+        click.echo(f"Task {task_id} cancelled.\n")
+    else:
+        click.echo(f"No task found with ID {task_id}.\n")
+
+
 @main.command()
 def repl() -> None:
     """Start interactive conversational session."""
@@ -659,6 +861,12 @@ def repl() -> None:
     alert_store = AlertStore(_user_dir() / "alerts.json")
     alert_monitor = AlertMonitor(alert_store, data_registry)
 
+    # Task scheduler
+    from qracer.task_executor import TaskExecutor
+    from qracer.tasks import TaskStore
+
+    task_store = TaskStore(_user_dir() / "tasks.json")
+
     engine = ConversationEngine(
         llm_registry,
         data_registry,
@@ -667,7 +875,12 @@ def repl() -> None:
         session_logger=session_logger,
         report_dir=reports_dir,
     )
-    asyncio.run(_repl_loop(engine, watchlist, alert_monitor=alert_monitor))
+
+    task_executor = TaskExecutor(task_store, data_registry, llm_registry, engine=engine)
+
+    asyncio.run(
+        _repl_loop(engine, watchlist, alert_monitor=alert_monitor, task_executor=task_executor)
+    )
 
 
 # ---------------------------------------------------------------------------
