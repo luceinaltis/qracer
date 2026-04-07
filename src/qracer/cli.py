@@ -412,7 +412,19 @@ async def _repl_loop(
         if has_config_changed():
             try:
                 llm_reg, data_reg, reload_warnings = _build_registries()
-                engine.update_registries(llm_reg, data_reg)  # type: ignore[attr-defined]
+
+                # Re-read config for portfolio and pipeline updates.
+                from qracer.tools.pipeline import configure as configure_pipeline
+
+                reloaded = load_config(force_reload=True)
+                configure_pipeline(
+                    lookback_days=reloaded.app.lookback_days,
+                    staleness_hours=reloaded.app.staleness_hours,
+                )
+
+                engine.update_registries(  # type: ignore[attr-defined]
+                    llm_reg, data_reg, portfolio_config=reloaded.portfolio
+                )
                 click.echo("⟳ Configuration reloaded.")
                 for warn in reload_warnings:
                     click.echo(f"  ⚠ {warn}")
