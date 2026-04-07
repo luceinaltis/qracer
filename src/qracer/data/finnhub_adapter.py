@@ -115,7 +115,9 @@ class FinnhubAdapter:
             raise ImportError(
                 "finnhub-python is not installed. Install it with: uv add finnhub-python"
             )
-        self._client = finnhub.Client(api_key=api_key or "")
+        if not api_key:
+            raise ValueError("FINNHUB_API_KEY is required. Get one at https://finnhub.io/register")
+        self._client = finnhub.Client(api_key=api_key)
 
     async def get_fundamentals(self, ticker: str) -> FundamentalData:
         """Get fundamental financial data for a ticker."""
