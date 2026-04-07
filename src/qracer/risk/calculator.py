@@ -225,6 +225,7 @@ class RiskCalculator:
         # Correlation/beta computation.
         portfolio_beta: float | None = None
         correlation_avg: float | None = None
+        correlation_data_unavailable = False
 
         if self._correlation_engine is not None and snapshot.holdings:
             corr_result = await self._correlation_engine.compute(snapshot.holdings)
@@ -232,6 +233,8 @@ class RiskCalculator:
                 self._last_correlation = corr_result
                 portfolio_beta = corr_result.portfolio_beta
                 correlation_avg = corr_result.correlation_avg
+            else:
+                correlation_data_unavailable = True
 
         return ExposureBreakdown(
             sector_weights=sector_weights,
@@ -239,6 +242,7 @@ class RiskCalculator:
             top_sector_pct=top_sector_pct,
             portfolio_beta=portfolio_beta,
             correlation_avg=correlation_avg,
+            correlation_data_unavailable=correlation_data_unavailable,
         )
 
     def check_limits(self, snapshot: PortfolioSnapshot, exposure: ExposureBreakdown) -> list[str]:
@@ -358,10 +362,18 @@ class RiskCalculator:
         alert_threshold = self._config.limits.max_drawdown_alert_pct
         drawdown_alert = drawdown_pct > alert_threshold
 
+        warnings: list[str] = []
+        if exposure.correlation_data_unavailable:
+            warnings.append(
+                "Correlation/beta data unavailable — risk assessment "
+                "proceeded without correlation adjustments"
+            )
+
         return RiskAssessment(
             snapshot=snapshot,
             exposure=exposure,
             limits_breached=breached,
+            warnings=warnings,
             max_drawdown_alert=drawdown_alert,
             current_drawdown_pct=round(drawdown_pct, 2),
             peak_value=round(self._peak_value, 2),

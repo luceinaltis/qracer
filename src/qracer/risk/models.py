@@ -43,6 +43,7 @@ class ExposureBreakdown(BaseModel):
     top_sector_pct: float
     portfolio_beta: float | None = None
     correlation_avg: float | None = None
+    correlation_data_unavailable: bool = False
 
 
 class RiskAssessment(BaseModel):
@@ -51,6 +52,7 @@ class RiskAssessment(BaseModel):
     snapshot: PortfolioSnapshot
     exposure: ExposureBreakdown
     limits_breached: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     max_drawdown_alert: bool = False
     current_drawdown_pct: float = 0.0
     peak_value: float = 0.0
