@@ -174,15 +174,16 @@ class RiskCalculator:
             as_of=datetime.now(),
         )
 
-    def build_exposure(self, snapshot: PortfolioSnapshot) -> ExposureBreakdown:
-        """Build exposure breakdown from a portfolio snapshot."""
-        sector_values: dict[str, float] = {}
-
-        for h in snapshot.holdings:
-            sector = self._sectors.get_sector(h.ticker)
-            sector_values[sector] = sector_values.get(sector, 0.0) + h.market_value
-
-        total = snapshot.total_value
+    @staticmethod
+    def _exposure_from_sector_values(
+        sector_values: dict[str, float],
+        total: float,
+        *,
+        portfolio_beta: float | None = None,
+        correlation_avg: float | None = None,
+        correlation_data_unavailable: bool = False,
+    ) -> ExposureBreakdown:
+        """Build an ExposureBreakdown from raw sector → market-value mapping."""
         sector_weights: dict[str, float] = {}
         for sector, value in sector_values.items():
             sector_weights[sector] = round(value / total * 100.0, 2) if total > 0 else 0.0
@@ -198,29 +199,26 @@ class RiskCalculator:
             sector_weights=sector_weights,
             top_sector=top_sector,
             top_sector_pct=top_sector_pct,
-            portfolio_beta=None,
-            correlation_avg=None,
+            portfolio_beta=portfolio_beta,
+            correlation_avg=correlation_avg,
+            correlation_data_unavailable=correlation_data_unavailable,
         )
+
+    def build_exposure(self, snapshot: PortfolioSnapshot) -> ExposureBreakdown:
+        """Build exposure breakdown from a portfolio snapshot."""
+        sector_values: dict[str, float] = {}
+        for h in snapshot.holdings:
+            sector = self._sectors.get_sector(h.ticker)
+            sector_values[sector] = sector_values.get(sector, 0.0) + h.market_value
+
+        return self._exposure_from_sector_values(sector_values, snapshot.total_value)
 
     async def build_exposure_async(self, snapshot: PortfolioSnapshot) -> ExposureBreakdown:
         """Build exposure breakdown with async sector lookup and correlation/beta."""
-        # Async sector lookup via FundamentalProvider (falls back to hardcoded).
         sector_values: dict[str, float] = {}
         for h in snapshot.holdings:
             sector = await self._sectors.get_sector_async(h.ticker)
             sector_values[sector] = sector_values.get(sector, 0.0) + h.market_value
-
-        total = snapshot.total_value
-        sector_weights: dict[str, float] = {}
-        for sector, value in sector_values.items():
-            sector_weights[sector] = round(value / total * 100.0, 2) if total > 0 else 0.0
-
-        if sector_weights:
-            top_sector = max(sector_weights, key=lambda s: sector_weights[s])
-            top_sector_pct = sector_weights[top_sector]
-        else:
-            top_sector = "N/A"
-            top_sector_pct = 0.0
 
         # Correlation/beta computation.
         portfolio_beta: float | None = None
@@ -236,10 +234,9 @@ class RiskCalculator:
             else:
                 correlation_data_unavailable = True
 
-        return ExposureBreakdown(
-            sector_weights=sector_weights,
-            top_sector=top_sector,
-            top_sector_pct=top_sector_pct,
+        return self._exposure_from_sector_values(
+            sector_values,
+            snapshot.total_value,
             portfolio_beta=portfolio_beta,
             correlation_avg=correlation_avg,
             correlation_data_unavailable=correlation_data_unavailable,
@@ -331,36 +328,17 @@ class RiskCalculator:
             return 0.0
         return (self._peak_value - current_value) / self._peak_value * 100.0
 
-    def assess(self, prices: dict[str, float]) -> RiskAssessment:
-        """Run a full risk assessment."""
-        snapshot = self.build_snapshot(prices)
-        exposure = self.build_exposure(snapshot)
+    def _build_assessment(
+        self,
+        snapshot: PortfolioSnapshot,
+        exposure: ExposureBreakdown,
+    ) -> RiskAssessment:
+        """Shared logic for assess/assess_async: limits, drawdown, warnings."""
         breached = self.check_limits(snapshot, exposure)
 
         self.update_peak(snapshot.total_value)
         drawdown_pct = self.compute_drawdown(snapshot.total_value)
-        alert_threshold = self._config.limits.max_drawdown_alert_pct
-        drawdown_alert = drawdown_pct > alert_threshold
-
-        return RiskAssessment(
-            snapshot=snapshot,
-            exposure=exposure,
-            limits_breached=breached,
-            max_drawdown_alert=drawdown_alert,
-            current_drawdown_pct=round(drawdown_pct, 2),
-            peak_value=round(self._peak_value, 2),
-        )
-
-    async def assess_async(self, prices: dict[str, float]) -> RiskAssessment:
-        """Run a full risk assessment with async correlation/beta computation."""
-        snapshot = self.build_snapshot(prices)
-        exposure = await self.build_exposure_async(snapshot)
-        breached = self.check_limits(snapshot, exposure)
-
-        self.update_peak(snapshot.total_value)
-        drawdown_pct = self.compute_drawdown(snapshot.total_value)
-        alert_threshold = self._config.limits.max_drawdown_alert_pct
-        drawdown_alert = drawdown_pct > alert_threshold
+        drawdown_alert = drawdown_pct > self._config.limits.max_drawdown_alert_pct
 
         warnings: list[str] = []
         if exposure.correlation_data_unavailable:
@@ -378,3 +356,15 @@ class RiskCalculator:
             current_drawdown_pct=round(drawdown_pct, 2),
             peak_value=round(self._peak_value, 2),
         )
+
+    def assess(self, prices: dict[str, float]) -> RiskAssessment:
+        """Run a full risk assessment."""
+        snapshot = self.build_snapshot(prices)
+        exposure = self.build_exposure(snapshot)
+        return self._build_assessment(snapshot, exposure)
+
+    async def assess_async(self, prices: dict[str, float]) -> RiskAssessment:
+        """Run a full risk assessment with async correlation/beta computation."""
+        snapshot = self.build_snapshot(prices)
+        exposure = await self.build_exposure_async(snapshot)
+        return self._build_assessment(snapshot, exposure)
