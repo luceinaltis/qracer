@@ -5,6 +5,8 @@ Pipeline steps: Universe Screening (step 1), Consensus Mapping (step 4).
 
 from __future__ import annotations
 
+import logging
+
 from qracer.agents.base import BaseAgent
 from qracer.data.providers import (
     FundamentalProvider,
@@ -12,6 +14,8 @@ from qracer.data.providers import (
 )
 from qracer.llm.providers import Role
 from qracer.models import Stock, ToolResult
+
+logger = logging.getLogger(__name__)
 
 
 class Researcher(BaseAgent):
@@ -69,7 +73,7 @@ class Researcher(BaseAgent):
                         )
                     )
         except KeyError:
-            pass  # no FundamentalProvider registered
+            logger.debug("FundamentalProvider not registered, skipping fundamentals screening")
 
         successful = self._successful_results(results)
         if not successful:
