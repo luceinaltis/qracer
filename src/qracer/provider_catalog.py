@@ -20,6 +20,10 @@ BUILTIN_DATA_PROVIDERS: dict[str, tuple[str, list[str]]] = {
             "qracer.data.providers.AlternativeProvider",
         ],
     ),
+    "fred": (
+        "qracer.data.fred_adapter.FredAdapter",
+        ["qracer.data.providers.MacroProvider"],
+    ),
 }
 
 # LLM providers: name -> (adapter import path, [role enum values])
