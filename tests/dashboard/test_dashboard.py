@@ -75,6 +75,6 @@ class TestAppConstruction:
         assert app.TITLE == "qracer"
 
     def test_css_path_exists(self) -> None:
-        base = Path(__file__).parent.parent.parent / "src" / "qracer"
+        base = Path(__file__).parent.parent.parent / "qracer"
         css_path = base / "dashboard" / "dashboard.tcss"
         assert css_path.exists(), f"CSS file not found at {css_path}"

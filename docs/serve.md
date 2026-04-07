@@ -56,8 +56,8 @@ TELEGRAM_CHAT_ID=your-chat-id
 
 | File | Role |
 |------|------|
-| `src/qracer/server.py` | Server loop (asyncio event loop with tick) |
-| `src/qracer/pidfile.py` | PID file acquire/release/check |
-| `src/qracer/tasks.py` | TaskStore with mtime hot-reload |
-| `src/qracer/alerts.py` | AlertStore with mtime hot-reload |
-| `src/qracer/notifications/` | Notification fan-out (Telegram, etc.) |
+| `qracer/server.py` | Server loop (asyncio event loop with tick) |
+| `qracer/pidfile.py` | PID file acquire/release/check |
+| `qracer/tasks.py` | TaskStore with mtime hot-reload |
+| `qracer/alerts.py` | AlertStore with mtime hot-reload |
+| `qracer/notifications/` | Notification fan-out (Telegram, etc.) |
