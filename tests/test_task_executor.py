@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -10,8 +9,8 @@ import pytest
 from qracer.data.providers import PriceProvider
 from qracer.data.registry import DataRegistry
 from qracer.llm.registry import LLMRegistry
-from qracer.tasks import TaskActionType, TaskScheduleType, TaskStatus, TaskStore
 from qracer.task_executor import TaskExecutor
+from qracer.tasks import TaskActionType, TaskStatus, TaskStore
 
 
 class FakePriceProvider:
@@ -57,7 +56,7 @@ class TestTaskExecutor:
         assert results == []
 
     async def test_check_executes_due_task(self, executor: TaskExecutor, store: TaskStore) -> None:
-        task = store.create(TaskActionType.ANALYZE, {"ticker": "AAPL"}, "every 1h")
+        store.create(TaskActionType.ANALYZE, {"ticker": "AAPL"}, "every 1h")
         # Force it to be due now
         store._tasks[0].next_run_at = "2020-01-01T00:00:00+00:00"
         store._tasks[0].status = TaskStatus.PENDING
@@ -68,7 +67,7 @@ class TestTaskExecutor:
         assert "AAPL" in results[0].output
 
     async def test_recurring_task_advances(self, executor: TaskExecutor, store: TaskStore) -> None:
-        task = store.create(TaskActionType.ANALYZE, {"ticker": "AAPL"}, "every 1h")
+        store.create(TaskActionType.ANALYZE, {"ticker": "AAPL"}, "every 1h")
         store._tasks[0].next_run_at = "2020-01-01T00:00:00+00:00"
 
         await executor.check()
@@ -79,7 +78,7 @@ class TestTaskExecutor:
         assert store._tasks[0].next_run_at != "2020-01-01T00:00:00+00:00"
 
     async def test_once_task_completed(self, executor: TaskExecutor, store: TaskStore) -> None:
-        task = store.create(
+        store.create(
             TaskActionType.ANALYZE, {"ticker": "AAPL"}, "2020-01-01T09:00:00"
         )
         # Already due (past date)
