@@ -1,4 +1,4 @@
-# HEARTBEAT.md
+# Schedule — Task Scheduler
 
 General-purpose task scheduler for qracer. Records tasks to execute later — both one-time and recurring — and runs them when due.
 
@@ -23,17 +23,17 @@ General-purpose task scheduler for qracer. Records tasks to execute later — bo
 
 ## Execution Modes
 
-### 1. REPL Heartbeat
+### 1. REPL Polling
 When the REPL is running, due tasks are checked every 30 seconds before each prompt. Results are displayed inline.
 
 ### 2. CLI Command
 ```bash
-qracer heartbeat
+qracer schedule-run
 ```
 Checks and executes all due tasks once, then exits. Designed for use with OS-level schedulers:
 
-- **Linux/macOS**: `*/5 * * * * qracer heartbeat`
-- **Windows**: Task Scheduler → run `qracer heartbeat` every 5 minutes
+- **Linux/macOS**: `*/5 * * * * qracer schedule-run`
+- **Windows**: Task Scheduler → run `qracer schedule-run` every 5 minutes
 
 ## REPL Commands
 

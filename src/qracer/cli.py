@@ -887,12 +887,12 @@ def repl() -> None:
 
 
 # ---------------------------------------------------------------------------
-# qracer heartbeat
+# qracer schedule-run
 # ---------------------------------------------------------------------------
 
 
-@main.command()
-def heartbeat() -> None:
+@main.command("schedule-run")
+def schedule_run() -> None:
     """Check and execute due scheduled tasks (for OS cron / Task Scheduler)."""
     logging.basicConfig(
         level=logging.INFO,
