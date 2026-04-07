@@ -6,15 +6,12 @@ from datetime import date
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import pytest
-
 from qracer.provider_catalog import (
     BUILTIN_DATA_PROVIDERS,
     BUILTIN_LLM_PROVIDERS,
     discover_data_providers,
     discover_llm_providers,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fake adapters used by the tests
