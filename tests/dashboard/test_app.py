@@ -26,11 +26,12 @@ class TestDashboardAppMount:
     async def test_switch_panel_invalid_id_is_noop(self) -> None:
         cfg = QracerConfig()
         with patch("qracer.dashboard.panels.load_config", return_value=cfg):
-            async with QracerDashboard().run_test(size=(100, 30)) as pilot:
-                pilot.app.action_switch_panel("nonexistent")
+            app = QracerDashboard()
+            async with app.run_test(size=(100, 30)) as pilot:
+                app.action_switch_panel("nonexistent")
                 await pilot.pause()
                 # Should still have original panel
-                panel = pilot.app.query_one("#main-panel")
+                panel = app.query_one("#main-panel")
                 assert panel is not None
 
 
