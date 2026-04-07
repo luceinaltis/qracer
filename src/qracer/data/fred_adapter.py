@@ -73,9 +73,7 @@ class FredAdapter:
 
     def __init__(self, api_key: str | None = None) -> None:
         if not _HAS_FRED:
-            raise ImportError(
-                "fredapi is not installed. Install it with: uv add fredapi"
-            )
+            raise ImportError("fredapi is not installed. Install it with: uv add fredapi")
         if not api_key:
             raise ValueError(
                 "FRED_API_KEY is required. Get one at https://fred.stlouisfed.org/docs/api/api_key.html"
