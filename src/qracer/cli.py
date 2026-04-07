@@ -506,5 +506,19 @@ def repl() -> None:
     asyncio.run(_repl_loop(engine, watchlist))
 
 
+# ---------------------------------------------------------------------------
+# qracer dashboard
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+def dashboard() -> None:
+    """Launch the interactive TUI dashboard."""
+    from qracer.dashboard.app import QracerDashboard
+
+    app = QracerDashboard()
+    app.run()
+
+
 if __name__ == "__main__":
     main()
