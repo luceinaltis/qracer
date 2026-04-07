@@ -95,7 +95,11 @@ class TestTelegramSend:
         import urllib.error
 
         exc = urllib.error.HTTPError(
-            url="https://api.telegram.org", code=401, msg="Unauthorized", hdrs=None, fp=None  # type: ignore[arg-type]
+            url="https://api.telegram.org",
+            code=401,
+            msg="Unauthorized",
+            hdrs=None,
+            fp=None,  # type: ignore[arg-type]
         )
         with patch("qracer.notifications.telegram_adapter.urllib.request.urlopen", side_effect=exc):
             result = await adapter.send(_make_notification())

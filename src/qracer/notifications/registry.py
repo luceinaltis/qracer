@@ -29,9 +29,7 @@ class NotificationRegistry:
             adapter: An object implementing :class:`NotificationProvider`.
         """
         if not isinstance(adapter, NotificationProvider):
-            raise TypeError(
-                f"Adapter '{name}' does not implement NotificationProvider protocol"
-            )
+            raise TypeError(f"Adapter '{name}' does not implement NotificationProvider protocol")
         self._channels[name] = adapter
 
     def unregister(self, name: str) -> None:
