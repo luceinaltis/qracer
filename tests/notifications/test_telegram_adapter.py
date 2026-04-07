@@ -98,7 +98,7 @@ class TestTelegramSend:
             url="https://api.telegram.org",
             code=401,
             msg="Unauthorized",
-            hdrs=None,
+            hdrs=None,  # type: ignore[arg-type]
             fp=None,  # type: ignore[arg-type]
         )
         with patch("qracer.notifications.telegram_adapter.urllib.request.urlopen", side_effect=exc):
