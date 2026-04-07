@@ -937,7 +937,28 @@ def serve(check_interval: int) -> None:
     config = load_config()
     notifications = build_notification_registry(config.credentials)
 
-    server = Server(alert_monitor, task_executor, notifications, tick_interval=1.0)
+    # Autonomous market monitoring (opt-in via config)
+    autonomous_monitor = None
+    if config.app.autonomous_enabled:
+        from qracer.autonomous import AutonomousMonitor
+        from qracer.watchlist import Watchlist
+
+        watchlist = Watchlist(_user_dir() / "watchlist.json")
+        autonomous_monitor = AutonomousMonitor(
+            watchlist,
+            data_registry,
+            price_move_threshold_pct=config.app.price_move_threshold_pct,
+            alert_cooldown_minutes=config.app.alert_cooldown_minutes,
+            check_interval=float(check_interval),
+        )
+
+    server = Server(
+        alert_monitor,
+        task_executor,
+        notifications,
+        autonomous_monitor=autonomous_monitor,
+        tick_interval=1.0,
+    )
 
     def _handle_signal(signum: int, _frame: object) -> None:
         click.echo(f"\nReceived signal {signum}, shutting down...")
@@ -950,6 +971,12 @@ def serve(check_interval: int) -> None:
     channels = notifications.channels
     if channels:
         click.echo(f"  Notifications: {', '.join(channels)}")
+    if autonomous_monitor is not None:
+        click.echo(
+            f"  Autonomous monitoring: enabled"
+            f" (threshold={config.app.price_move_threshold_pct}%,"
+            f" cooldown={config.app.alert_cooldown_minutes}min)"
+        )
     click.echo("  Press Ctrl+C to stop.\n")
 
     try:

@@ -23,6 +23,11 @@ class AppConfig(BaseModel):
     lookback_days: int = 30
     staleness_hours: int = 24
 
+    # Autonomous monitoring
+    autonomous_enabled: bool = False
+    price_move_threshold_pct: float = 2.0
+    alert_cooldown_minutes: int = 30
+
 
 class ProviderConfig(BaseModel):
     """Single provider entry inside providers.toml."""
