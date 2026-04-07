@@ -225,3 +225,34 @@ class TestMemorySearch:
         assert result.success is True
         assert result.tool == "memory_search"
         assert result.data["results"] == []
+
+
+class TestConfigure:
+    def test_configure_lookback_days(self) -> None:
+        from qracer.tools import pipeline as mod
+
+        original = mod._DEFAULT_LOOKBACK_DAYS
+        try:
+            mod.configure(lookback_days=60)
+            assert mod._DEFAULT_LOOKBACK_DAYS == 60
+        finally:
+            mod._DEFAULT_LOOKBACK_DAYS = original
+
+    def test_configure_staleness_hours(self) -> None:
+        from qracer.tools import pipeline as mod
+
+        original = mod._STALENESS_HOURS
+        try:
+            mod.configure(staleness_hours=48)
+            assert mod._STALENESS_HOURS == 48
+        finally:
+            mod._STALENESS_HOURS = original
+
+    def test_configure_none_no_change(self) -> None:
+        from qracer.tools import pipeline as mod
+
+        original_lb = mod._DEFAULT_LOOKBACK_DAYS
+        original_sh = mod._STALENESS_HOURS
+        mod.configure()
+        assert mod._DEFAULT_LOOKBACK_DAYS == original_lb
+        assert mod._STALENESS_HOURS == original_sh
