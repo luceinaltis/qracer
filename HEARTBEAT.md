@@ -1,32 +1,52 @@
 # HEARTBEAT.md
 
-Autonomous monitoring tasks for Tracer. Runs periodically during market hours.
+General-purpose task scheduler for qracer. Records tasks to execute later — both one-time and recurring — and runs them when due.
 
-## Market Hours Check (9:00–15:30 KST / 9:30–16:00 EST)
+## Task Types
 
-- Fetch latest prices for all tickers in USER.md watchlist
-- Check for price moves > 2% from session open
-- Scan for breaking news on watchlist tickers
-- If trigger found: run LivePipeline analysis → push alert to user
+| Type | Example | Description |
+|------|---------|-------------|
+| `analyze` | `schedule analyze AAPL every 1h` | Run full analysis on a ticker |
+| `news_scan` | `schedule news scan TSLA every 30m` | Fetch latest news articles |
+| `portfolio_snapshot` | `schedule portfolio snapshot daily 09:30` | Take a portfolio P&L snapshot |
+| `cross_market_scan` | `schedule cross market AAPL,TSLA every 1d` | Cross-market comparison |
+| `custom_query` | `schedule query "macro outlook" every 1d` | Freeform query via engine |
 
-## Session Start Briefing
+## Schedule Formats
 
-At the start of each session, summarize:
-- Overnight / since-last-session moves on watchlist
-- Key news events
-- Any open alerts or pending analysis from last session
+| Format | Example | Type |
+|--------|---------|------|
+| ISO datetime | `2026-04-08T09:30:00` | One-time |
+| Interval | `every 1h`, `every 30m`, `every 1d` | Recurring |
+| Daily | `daily 09:30` | Recurring |
+| Weekly | `weekly monday 09:00` | Recurring |
 
-## Scheduled Analysis
+## Execution Modes
 
-| Schedule | Task |
-|---|---|
-| Market open +30min | Overnight news summary |
-| Midday | Cross-market signal scan |
-| Market close | Day summary for watchlist |
-| Weekly (Sunday) | Watchlist conviction review |
+### 1. REPL Heartbeat
+When the REPL is running, due tasks are checked every 30 seconds before each prompt. Results are displayed inline.
 
-## Cooldown Rules
+### 2. CLI Command
+```bash
+qracer heartbeat
+```
+Checks and executes all due tasks once, then exits. Designed for use with OS-level schedulers:
 
-- Max 1 alert per ticker per 30 minutes
-- Skip alerts outside market hours (unless user-defined threshold crossed)
-- Batch minor events into summary instead of individual alerts
+- **Linux/macOS**: `*/5 * * * * qracer heartbeat`
+- **Windows**: Task Scheduler → run `qracer heartbeat` every 5 minutes
+
+## REPL Commands
+
+| Command | Description |
+|---------|-------------|
+| `schedule <action> every/at <time>` | Create a task |
+| `tasks` | List all tasks |
+| `cancel-task <id>` | Cancel a task |
+
+## Storage
+
+Tasks are persisted in `~/.qracer/tasks.json`. Each task tracks:
+- Action type and parameters
+- Schedule spec and next run time
+- Status (pending/running/completed/failed)
+- Run count and last error
