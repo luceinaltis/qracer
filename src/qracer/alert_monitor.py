@@ -39,7 +39,7 @@ class AlertMonitor:
         self._store = store
         self._data_registry = data_registry
         self._check_interval = check_interval
-        self._last_check: float = 0.0
+        self._last_check: float | None = None
 
     @property
     def store(self) -> AlertStore:
@@ -47,6 +47,8 @@ class AlertMonitor:
 
     def should_check(self) -> bool:
         """Return True if enough time has elapsed since the last check."""
+        if self._last_check is None:
+            return True
         return (time.monotonic() - self._last_check) >= self._check_interval
 
     async def check(self) -> list[AlertResult]:
