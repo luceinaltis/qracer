@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 
 from qracer.config.loader import (
+    ConfigParseError,
     _load_credentials,
     _load_merged_toml,
+    _load_toml,
     _merge_dicts,
     load_config,
     resolve_config_dirs,
@@ -97,6 +99,61 @@ class TestMergedTomlLoading:
         d = tmp_path / "empty"
         d.mkdir()
         assert _load_merged_toml("config.toml", [d]) == {}
+
+
+# --- TOML parse error propagation ---
+
+
+class TestTomlParseErrors:
+    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        assert _load_toml(tmp_path / "nonexistent.toml") == {}
+
+    def test_valid_toml_returns_data(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "good.toml"
+        toml_file.write_text('key = "value"\n')
+        assert _load_toml(toml_file) == {"key": "value"}
+
+    def test_invalid_toml_raises_config_parse_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "bad.toml"
+        toml_file.write_text("invalid = [unclosed\n")
+        with pytest.raises(ConfigParseError, match="Failed to parse"):
+            _load_toml(toml_file)
+
+    def test_error_message_includes_path(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "bad.toml"
+        toml_file.write_text("= no key\n")
+        with pytest.raises(ConfigParseError, match=str(toml_file)):
+            _load_toml(toml_file)
+
+    def test_error_chains_original_exception(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "bad.toml"
+        toml_file.write_text("[broken\n")
+        with pytest.raises(ConfigParseError) as exc_info:
+            _load_toml(toml_file)
+        assert exc_info.value.__cause__ is not None
+
+    def test_merged_toml_propagates_parse_error(
+        self, user_qracer: Path, project_qracer: Path
+    ) -> None:
+        (user_qracer / "providers.toml").write_text(
+            '[providers.yfinance]\nenabled = true\npriority = 100\ntier = "hot"\n'
+        )
+        # Project-level file has a syntax error
+        (project_qracer / "providers.toml").write_text("invalid toml [[\n")
+        with pytest.raises(ConfigParseError):
+            _load_merged_toml("providers.toml", [project_qracer, user_qracer])
+
+    def test_load_config_propagates_parse_error(
+        self, user_qracer: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (user_qracer / "config.toml").write_text("broken = [\n")
+        monkeypatch.setattr(
+            "qracer.config.loader._project_dir", lambda: user_qracer.parent / "nope"
+        )
+        monkeypatch.setattr("qracer.config.loader._user_dir", lambda: user_qracer)
+        monkeypatch.delenv("QRACER_CONFIG_DIR", raising=False)
+        with pytest.raises(ConfigParseError):
+            load_config(force_reload=True)
 
 
 # --- Credentials isolation ---
