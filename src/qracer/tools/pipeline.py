@@ -33,6 +33,15 @@ _DEFAULT_LOOKBACK_DAYS = 30
 _STALENESS_HOURS = 24
 
 
+def configure(*, lookback_days: int | None = None, staleness_hours: int | None = None) -> None:
+    """Override pipeline defaults from config.  Called once at startup."""
+    global _DEFAULT_LOOKBACK_DAYS, _STALENESS_HOURS  # noqa: PLW0603
+    if lookback_days is not None:
+        _DEFAULT_LOOKBACK_DAYS = lookback_days
+    if staleness_hours is not None:
+        _STALENESS_HOURS = staleness_hours
+
+
 def _is_stale(fetched_at: datetime, threshold_hours: int = _STALENESS_HOURS) -> bool:
     return (datetime.now() - fetched_at).total_seconds() > threshold_hours * 3600
 

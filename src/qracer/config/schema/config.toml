@@ -5,3 +5,11 @@ default_mode = "quick"        # "quick" or "deep"
 llm_provider = "claude"
 llm_model = "claude-sonnet-4-20250514"
 language = "en"
+
+# Analysis loop tuning
+max_iterations = 3            # max reasoning iterations before returning
+confidence_threshold = 0.7    # 0.0–1.0, stop early when confidence exceeds this
+
+# Pipeline defaults
+lookback_days = 30            # days of price history to fetch
+staleness_hours = 24          # hours before data is considered stale

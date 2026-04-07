@@ -619,6 +619,16 @@ def repl() -> None:
     if provider_warnings:
         click.echo()
 
+    # Apply config-driven pipeline defaults.
+    from qracer.config.loader import load_config
+    from qracer.tools.pipeline import configure as configure_pipeline
+
+    app_cfg = load_config().app
+    configure_pipeline(
+        lookback_days=app_cfg.lookback_days,
+        staleness_hours=app_cfg.staleness_hours,
+    )
+
     # Create session logger in ~/.qracer/sessions/<uuid>.jsonl
     sessions_dir = _user_dir() / "sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
@@ -635,6 +645,8 @@ def repl() -> None:
     engine = ConversationEngine(
         llm_registry,
         data_registry,
+        max_iterations=app_cfg.max_iterations,
+        confidence_threshold=app_cfg.confidence_threshold,
         session_logger=session_logger,
         report_dir=reports_dir,
     )
