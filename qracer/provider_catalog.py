@@ -14,6 +14,7 @@ External packages can also register providers via entry points::
 
 from __future__ import annotations
 
+import importlib
 import importlib.metadata
 import logging
 
@@ -90,8 +91,6 @@ def discover_data_providers() -> dict[str, tuple[str, list[str]]]:
     Returns a merged catalog in the same format as
     :data:`BUILTIN_DATA_PROVIDERS`.
     """
-    import importlib
-
     merged = dict(BUILTIN_DATA_PROVIDERS)
 
     eps = importlib.metadata.entry_points(group="qracer.data_providers")
@@ -99,9 +98,7 @@ def discover_data_providers() -> dict[str, tuple[str, list[str]]]:
         try:
             adapter_cls = ep.load()
         except Exception as exc:
-            logger.warning(
-                "Failed to load data-provider entry point '%s': %s", ep.name, exc
-            )
+            logger.warning("Failed to load data-provider entry point '%s': %s", ep.name, exc)
             continue
 
         # Detect which capability protocols this adapter satisfies.
@@ -147,9 +144,7 @@ def discover_llm_providers() -> dict[str, tuple[str, list[str]]]:
         try:
             adapter_cls = ep.load()
         except Exception as exc:
-            logger.warning(
-                "Failed to load LLM-provider entry point '%s': %s", ep.name, exc
-            )
+            logger.warning("Failed to load LLM-provider entry point '%s': %s", ep.name, exc)
             continue
 
         # Extract roles from the adapter class attribute.

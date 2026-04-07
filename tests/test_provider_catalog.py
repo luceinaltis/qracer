@@ -17,6 +17,7 @@ from qracer.provider_catalog import (
 # Fake adapters used by the tests
 # ---------------------------------------------------------------------------
 
+
 class _FakePriceAdapter:
     """Satisfies PriceProvider protocol."""
 
@@ -52,6 +53,7 @@ class _FakeLLMAdapterNoRoles:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_entry_point(name: str, cls: type) -> SimpleNamespace:
     """Create a minimal entry-point-like object."""
     return SimpleNamespace(name=name, load=lambda: cls)
@@ -69,6 +71,7 @@ def _make_failing_entry_point(name: str) -> SimpleNamespace:
 # ---------------------------------------------------------------------------
 # discover_data_providers
 # ---------------------------------------------------------------------------
+
 
 class TestDiscoverDataProviders:
     def test_returns_builtins_when_no_plugins(self) -> None:
@@ -119,6 +122,7 @@ class TestDiscoverDataProviders:
 # ---------------------------------------------------------------------------
 # discover_llm_providers
 # ---------------------------------------------------------------------------
+
 
 class TestDiscoverLLMProviders:
     def test_returns_builtins_when_no_plugins(self) -> None:
