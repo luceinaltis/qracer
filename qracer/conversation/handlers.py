@@ -230,9 +230,7 @@ def _format_rebalance_suggestions(suggestions: list[RebalanceAction]) -> str:
     lines = ["Rebalancing Suggestions:"]
     for s in suggestions:
         if s.action == "reduce":
-            lines.append(
-                f"  REDUCE {s.ticker}: sell {abs(s.shares_delta):.0f} shares — {s.reason}"
-            )
+            lines.append(f"  REDUCE {s.ticker}: sell {abs(s.shares_delta):.0f} shares — {s.reason}")
         else:
             lines.append(f"  ADD {s.ticker} — {s.reason}")
     return "\n".join(lines)

@@ -497,7 +497,8 @@ class TestSuggestRebalance:
         assert len(aapl_actions) == 1
         assert aapl_actions[0].action == "reduce"
         assert aapl_actions[0].shares_delta < 0
-        assert "single position" in aapl_actions[0].reason.lower() or "exceeds" in aapl_actions[0].reason.lower()
+        reason = aapl_actions[0].reason.lower()
+        assert "exceeds" in reason
 
     def test_sector_breach_reduces_largest_first(self) -> None:
         """Sector breach reduces the largest position in that sector first."""
