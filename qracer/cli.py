@@ -381,15 +381,45 @@ async def _repl_loop(
     alert_monitor: object | None = None,
     task_executor: object | None = None,
     data_registry: object | None = None,
+    sessions_dir: Path | None = None,
+    current_session: Path | None = None,
 ) -> None:
     """Run the interactive read-eval-print loop."""
     from qracer.alert_monitor import AlertMonitor
     from qracer.config.loader import has_config_changed
+    from qracer.conversation.quickpath import generate_briefing
+    from qracer.data.registry import DataRegistry
     from qracer.task_executor import TaskExecutor
+    from qracer.watchlist import Watchlist
 
-    click.echo(BANNER)
     monitor: AlertMonitor | None = alert_monitor  # type: ignore[assignment]
     executor: TaskExecutor | None = task_executor  # type: ignore[assignment]
+
+    # One-time session-start briefing summarising activity since the last run.
+    if (
+        sessions_dir is not None
+        and isinstance(data_registry, DataRegistry)
+        and isinstance(watchlist, Watchlist)
+        and monitor is not None
+        and executor is not None
+    ):
+        try:
+            briefing = await generate_briefing(
+                watchlist,
+                data_registry,
+                monitor.store,
+                executor.store,
+                sessions_dir,
+                current_session=current_session,
+            )
+        except Exception:
+            logger.debug("Session briefing generation failed", exc_info=True)
+            briefing = None
+        if briefing:
+            click.echo(briefing)
+            click.echo()
+
+    click.echo(BANNER)
 
     while True:
         # Check alerts on each iteration if enough time has elapsed.
@@ -926,6 +956,8 @@ def repl() -> None:
             alert_monitor=alert_monitor,
             task_executor=task_executor,
             data_registry=data_registry,
+            sessions_dir=sessions_dir,
+            current_session=session_logger.path,
         )
     )
 
