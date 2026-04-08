@@ -98,6 +98,65 @@ class TestQuickNews:
         assert "no news" in text
 
 
+# ---------------------------------------------------------------------------
+# i18n tests
+# ---------------------------------------------------------------------------
+
+
+class TestQuickPathI18n:
+    """Verify quickpath templates render in non-English languages."""
+
+    def test_price_check_korean(self) -> None:
+        intent = Intent(IntentType.PRICE_CHECK, tickers=["AAPL"], raw_query="AAPL 가격")
+        text = format_quickpath(intent, [_price_result()], language="ko")
+        assert "AAPL" in text
+        assert "$178.52" in text
+
+    def test_price_unavailable_korean(self) -> None:
+        intent = Intent(IntentType.PRICE_CHECK, tickers=["AAPL"], raw_query="AAPL 가격")
+        failed = ToolResult(
+            tool="price_event", success=False, data={}, source="test", error="no provider"
+        )
+        text = format_quickpath(intent, [failed], language="ko")
+        assert "가격 정보 없음" in text
+
+    def test_price_unavailable_japanese(self) -> None:
+        intent = Intent(IntentType.PRICE_CHECK, tickers=["TSLA"], raw_query="TSLA price")
+        failed = ToolResult(
+            tool="price_event", success=False, data={}, source="test", error="no provider"
+        )
+        text = format_quickpath(intent, [failed], language="ja")
+        assert "価格情報なし" in text
+
+    def test_news_header_korean(self) -> None:
+        intent = Intent(IntentType.QUICK_NEWS, tickers=["AAPL"], raw_query="AAPL 뉴스")
+        text = format_quickpath(intent, [_news_result()], language="ko")
+        assert "뉴스" in text
+        assert "2건" in text
+
+    def test_no_news_japanese(self) -> None:
+        intent = Intent(IntentType.QUICK_NEWS, tickers=["AAPL"], raw_query="AAPL news")
+        failed = ToolResult(tool="news", success=False, data={}, source="test", error="no provider")
+        text = format_quickpath(intent, [failed], language="ja")
+        assert "ニュースなし" in text
+
+    def test_no_data_korean(self) -> None:
+        intent = Intent(IntentType.ALPHA_HUNT, tickers=["AAPL"], raw_query="test")
+        text = format_quickpath(intent, [], language="ko")
+        assert "데이터 없음" in text
+
+    def test_english_default_preserved(self) -> None:
+        """Default language=en should produce identical output to no language arg."""
+        intent = Intent(IntentType.PRICE_CHECK, tickers=["AAPL"], raw_query="AAPL price")
+        failed = ToolResult(
+            tool="price_event", success=False, data={}, source="test", error="no provider"
+        )
+        text_default = format_quickpath(intent, [failed])
+        text_en = format_quickpath(intent, [failed], language="en")
+        assert text_default == text_en
+        assert "unavailable" in text_en
+
+
 class TestKeywordDetection:
     def test_price_check_keywords(self) -> None:
         from unittest.mock import AsyncMock

@@ -621,3 +621,127 @@ class TestSessionLogging:
             response = await engine.query("Test query")
 
         assert response.text == "Response"
+
+
+# ---------------------------------------------------------------------------
+# i18n tests
+# ---------------------------------------------------------------------------
+
+
+class TestResponseSynthesizerI18n:
+    async def test_korean_instruction_in_system_prompt(self) -> None:
+        """Korean language should append instruction to system prompt."""
+        from qracer.llm.providers import CompletionResponse
+
+        provider = AsyncMock()
+        provider.complete.return_value = CompletionResponse(
+            content="[분석: AAPL]\n확신도: 8/10\n한국어 응답",
+            model="mock",
+            input_tokens=10,
+            output_tokens=5,
+            cost=0.0,
+        )
+        llm = LLMRegistry()
+        llm.register("mock", provider, [Role.STRATEGIST])
+
+        synth = ResponseSynthesizer(llm, language="ko")
+        intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
+        from qracer.conversation.analysis_loop import AnalysisResult
+
+        analysis = AnalysisResult(results=[_ok_result("price_event")], confidence=0.8, iterations=1)
+
+        await synth.synthesize(intent, analysis)
+
+        # Verify the system prompt contains the Korean instruction
+        call_args = provider.complete.call_args[0][0]
+        system_msg = call_args.messages[0].content
+        assert "Korean" in system_msg
+        assert "ENTIRE response" in system_msg
+
+    async def test_english_no_language_instruction(self) -> None:
+        """English (default) should NOT append any language instruction."""
+        from qracer.llm.providers import CompletionResponse
+
+        provider = AsyncMock()
+        provider.complete.return_value = CompletionResponse(
+            content="[ANALYSIS: AAPL]\nConviction: 8/10",
+            model="mock",
+            input_tokens=10,
+            output_tokens=5,
+            cost=0.0,
+        )
+        llm = LLMRegistry()
+        llm.register("mock", provider, [Role.STRATEGIST])
+
+        synth = ResponseSynthesizer(llm, language="en")
+        intent = Intent(IntentType.EVENT_ANALYSIS, tickers=["AAPL"], raw_query="test")
+        from qracer.conversation.analysis_loop import AnalysisResult
+
+        analysis = AnalysisResult(results=[_ok_result("price_event")], confidence=0.8, iterations=1)
+
+        await synth.synthesize(intent, analysis)
+
+        call_args = provider.complete.call_args[0][0]
+        system_msg = call_args.messages[0].content
+        assert "ENTIRE response" not in system_msg
+
+
+class TestComparisonSynthesizerI18n:
+    async def test_japanese_instruction_in_system_prompt(self) -> None:
+        """Japanese language should append instruction to comparison system prompt."""
+        from qracer.llm.providers import CompletionResponse
+
+        provider = AsyncMock()
+        provider.complete.return_value = CompletionResponse(
+            content="[比較: AAPL, MSFT]\n日本語の応答",
+            model="mock",
+            input_tokens=10,
+            output_tokens=5,
+            cost=0.0,
+        )
+        llm = LLMRegistry()
+        llm.register("mock", provider, [Role.STRATEGIST])
+
+        synth = ComparisonSynthesizer(llm, language="ja")
+        intent = Intent(IntentType.COMPARISON, tickers=["AAPL", "MSFT"], raw_query="test")
+        per_ticker = {
+            "AAPL": [_ok_result("price_event")],
+            "MSFT": [_ok_result("price_event")],
+        }
+
+        await synth.synthesize(intent, per_ticker)
+
+        call_args = provider.complete.call_args[0][0]
+        system_msg = call_args.messages[0].content
+        assert "Japanese" in system_msg
+        assert "ENTIRE response" in system_msg
+
+
+class TestConversationEngineI18n:
+    async def test_language_passed_to_quickpath(self) -> None:
+        """Engine with language='ko' should produce Korean quickpath output."""
+        intent_resp = json.dumps({"intent": "price_check", "tickers": ["AAPL"]})
+
+        llm = _mock_llm_registry({Role.RESEARCHER: intent_resp})
+        engine = ConversationEngine(llm, DataRegistry(), language="ko")
+
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
+            failed = _failed_result("price_event")
+            mock_invoke.return_value = [failed]
+            response = await engine.query("AAPL 가격")
+
+        assert "가격 정보 없음" in response.text
+
+    async def test_default_language_is_english(self) -> None:
+        """Engine without language arg should default to English."""
+        intent_resp = json.dumps({"intent": "price_check", "tickers": ["AAPL"]})
+
+        llm = _mock_llm_registry({Role.RESEARCHER: intent_resp})
+        engine = ConversationEngine(llm, DataRegistry())
+
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
+            failed = _failed_result("price_event")
+            mock_invoke.return_value = [failed]
+            response = await engine.query("AAPL price")
+
+        assert "unavailable" in response.text

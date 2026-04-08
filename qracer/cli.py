@@ -878,6 +878,7 @@ def repl() -> None:
         confidence_threshold=app_cfg.confidence_threshold,
         session_logger=session_logger,
         report_dir=reports_dir,
+        language=app_cfg.language,
     )
 
     task_executor = TaskExecutor(task_store, data_registry, llm_registry, engine=engine)
