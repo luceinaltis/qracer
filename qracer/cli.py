@@ -867,6 +867,7 @@ def repl() -> None:
     from qracer.alert_monitor import AlertMonitor
     from qracer.alerts import AlertStore
     from qracer.conversation.engine import ConversationEngine
+    from qracer.memory.memory_searcher import MemorySearcher
     from qracer.memory.session_logger import SessionLogger
     from qracer.watchlist import Watchlist
 
@@ -894,6 +895,14 @@ def repl() -> None:
     session_id = uuid.uuid4().hex[:12]
     session_logger = SessionLogger(sessions_dir / f"{session_id}.jsonl")
 
+    # Cross-session memory (Tier 2 summaries + Tier 3 search index).
+    summaries_dir = _user_dir() / "summaries"
+    summaries_dir.mkdir(parents=True, exist_ok=True)
+    memory_searcher = MemorySearcher(_user_dir() / "memory_index.duckdb")
+    loaded_contexts = memory_searcher.index_directory(summaries_dir)
+    if loaded_contexts:
+        click.echo(f"  ✓ Loaded {loaded_contexts} past session summaries from {summaries_dir}")
+
     reports_dir = _user_dir() / "reports"
     watchlist = Watchlist(_user_dir() / "watchlist.json")
 
@@ -915,6 +924,8 @@ def repl() -> None:
         session_logger=session_logger,
         report_dir=reports_dir,
         language=app_cfg.language,
+        memory_searcher=memory_searcher,
+        summaries_dir=summaries_dir,
     )
 
     task_executor = TaskExecutor(task_store, data_registry, llm_registry, engine=engine)

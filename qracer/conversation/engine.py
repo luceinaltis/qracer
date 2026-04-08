@@ -70,6 +70,7 @@ class ConversationEngine:
         report_dir: Path | None = None,
         memory_searcher: MemorySearcher | None = None,
         language: str = "en",
+        summaries_dir: Path | None = None,
     ) -> None:
         self._llm = llm_registry
         self._data = data_registry
@@ -77,6 +78,7 @@ class ConversationEngine:
         self._portfolio_config = portfolio_config or PortfolioConfig()
         self._memory_searcher = memory_searcher
         self._language = language
+        self._summaries_dir = summaries_dir
 
         analysis_loop = AnalysisLoop(
             llm_registry,
@@ -190,19 +192,34 @@ class ConversationEngine:
         )
 
     async def _maybe_compact(self) -> None:
-        """Trigger compaction if the session log exceeds the token threshold."""
+        """Trigger compaction if the session log exceeds the token threshold.
+
+        When a ``summaries_dir`` is configured the compacted summary is also
+        persisted to disk (Tier 2) and, if a ``memory_searcher`` is present,
+        indexed into the search index (Tier 3) so future sessions can find
+        it.
+        """
         if self._compactor is None or self._session_logger is None:
             return
-        if self._compactor.needs_compaction(self._session_logger):
-            try:
-                result = await self._compactor.compact(self._session_logger)
-                logger.info(
-                    "Session compacted: %d turns → %d tokens summary",
-                    result.turn_count,
-                    result.output_tokens,
+        if not self._compactor.needs_compaction(self._session_logger):
+            return
+        try:
+            if self._summaries_dir is not None:
+                result = await self._compactor.compact_and_save(
+                    self._session_logger, self._summaries_dir
                 )
-            except Exception:
-                logger.warning("Session compaction failed", exc_info=True)
+                if self._memory_searcher is not None:
+                    session_id = self._session_logger.path.stem
+                    self._memory_searcher.index_summary(session_id, result.summary)
+            else:
+                result = await self._compactor.compact(self._session_logger)
+            logger.info(
+                "Session compacted: %d turns → %d tokens summary",
+                result.turn_count,
+                result.output_tokens,
+            )
+        except Exception:
+            logger.warning("Session compaction failed", exc_info=True)
 
     async def query(self, user_input: str) -> EngineResponse:
         """Process a user query through the full pipeline."""
