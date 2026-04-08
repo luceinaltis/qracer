@@ -67,6 +67,7 @@ class Sidebar(Widget):
                 ("Portfolio", "portfolio"),
                 ("Watchlist", "watchlist"),
                 ("Alerts", "alerts"),
+                ("Tasks", "tasks"),
             ],
         ),
         (

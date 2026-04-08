@@ -1006,7 +1006,21 @@ def dashboard() -> None:
         )
         raise SystemExit(1)
 
-    app = QracerDashboard()
+    from qracer.alerts import AlertStore
+    from qracer.tasks import TaskStore
+
+    _, data_registry, provider_warnings = _build_registries()
+    for warn in provider_warnings:
+        click.echo(f"  ⚠ {warn}")
+
+    alert_store = AlertStore(_user_dir() / "alerts.json")
+    task_store = TaskStore(_user_dir() / "tasks.json")
+
+    app = QracerDashboard(
+        data_registry=data_registry,
+        alert_store=alert_store,
+        task_store=task_store,
+    )
     app.run()
 
 

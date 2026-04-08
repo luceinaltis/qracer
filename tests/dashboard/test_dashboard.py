@@ -54,7 +54,7 @@ class TestSidebarGroups:
     def test_dash_group_items(self) -> None:
         dash_items = Sidebar._GROUPS[0][1]
         ids = [item_id for _, item_id in dash_items]
-        assert ids == ["overview", "portfolio", "watchlist", "alerts"]
+        assert ids == ["overview", "portfolio", "watchlist", "alerts", "tasks"]
 
     def test_chat_group_items(self) -> None:
         chat_items = Sidebar._GROUPS[1][1]
