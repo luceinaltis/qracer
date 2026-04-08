@@ -44,9 +44,11 @@ class TestLocalSearch:
 class TestEmbeddingSearch:
     async def test_found_in_memory(self):
         ctx = _ctx()
+        searcher = MemorySearcher()
         try:
-            searcher = MemorySearcher()
+            searcher._ensure_fts_loaded()
         except Exception:
+            searcher.close()
             pytest.skip("DuckDB FTS extension unavailable")
         searcher.index_summary("sess_aapl", "# AAPLA Analysis\nAAPL beat earnings...")
         result = await resolve_unknown_topic(
@@ -58,9 +60,11 @@ class TestEmbeddingSearch:
 
     async def test_not_found_in_memory(self):
         ctx = _ctx()
+        searcher = MemorySearcher()
         try:
-            searcher = MemorySearcher()
+            searcher._ensure_fts_loaded()
         except Exception:
+            searcher.close()
             pytest.skip("DuckDB FTS extension unavailable")
         result = await resolve_unknown_topic("Unknown stock", ctx, memory_searcher=searcher)
         assert result.resolved is False

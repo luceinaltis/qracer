@@ -17,21 +17,21 @@ Complete audit trail — reconstructs exactly what the agent did and why.
 
 ## Tier 2 — Compressed Summary (Markdown)
 
-> **구현 예정** — 현재 SessionCompactor가 존재하지만 요약이 파일로 저장되지 않습니다.
-
-When a session exceeds 8,000 tokens (measured via `tiktoken`), SessionManager compacts the conversation into a Markdown summary using the reporter role (Haiku). The summary replaces raw turns in the active context window; the JSONL is preserved.
+When a session exceeds 8,000 tokens (rough `len // 4` estimate of the JSONL log), the `ConversationEngine` invokes `SessionCompactor.compact_and_save()` after each turn via `_maybe_compact()`. The reporter role (Haiku) condenses the turns into a concise Markdown summary, which is written to `~/.qracer/summaries/<session_id>.md`. The raw JSONL log is preserved untouched.
 
 ## Tier 3 — Search Index (DuckDB)
 
-> **구현 예정** — 현재 MemorySearcher가 DuckDB FTS로 키워드 검색을 지원하지만, 벡터 임베딩(HNSW) 검색은 미구현입니다.
+`MemorySearcher` indexes Tier 2 Markdown summaries in DuckDB for hybrid retrieval: keyword (BM25 via FTS) and, when an embedding function is supplied, vector similarity via DuckDB's `list_cosine_similarity`. The two branches are fused with reciprocal rank fusion so scores from different scales can be combined without normalisation.
 
-DuckDB indexes all Tier 2 Markdown summaries for hybrid retrieval: keyword (FTS) + vector similarity (VSS/HNSW). Writes occur only at compaction time.
-
-- Embedding model: `text-embedding-3-small` (OpenAI API) or `all-MiniLM-L6-v2` (local fallback).
-- Tables: `session_index` (FTS), `session_embeddings` (HNSW).
+- Embedding is pluggable via the `embedding_fn: Callable[[str], list[float]]` parameter — callers can back it with the Claude API, `text-embedding-3-small`, `sentence-transformers`, or any other model. When `embedding_fn` is `None` the searcher falls back to keyword-only search.
+- Tables: `session_index` (FTS) and `session_embeddings` (cosine similarity).
 - Source of truth is the Markdown files; DuckDB is the index only.
 
 The agent calls `memory_search` autonomously when past context may be relevant.
+
+## Cross-Session Loading
+
+On `qracer repl` startup, the CLI instantiates a file-backed `MemorySearcher` at `~/.qracer/memory_index.duckdb` and re-indexes every Markdown file in `~/.qracer/summaries/`. The number of loaded contexts is printed to the user so returning sessions immediately know how much prior memory is in scope.
 
 ## MEMORY.md vs. Tier 2
 

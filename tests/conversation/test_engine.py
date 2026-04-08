@@ -745,3 +745,94 @@ class TestConversationEngineI18n:
             response = await engine.query("AAPL price")
 
         assert "unavailable" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Cross-session memory: compact_and_save + Tier 3 auto-indexing
+# ---------------------------------------------------------------------------
+
+
+class TestCompactionPersistence:
+    async def test_maybe_compact_saves_to_disk_and_indexes(self, tmp_path) -> None:
+        """When summaries_dir and memory_searcher are set, compaction should
+        write a Markdown summary to disk AND auto-index it into Tier 3."""
+        from qracer.memory.memory_searcher import MemorySearcher
+        from qracer.memory.session_compactor import CompactionResult
+        from qracer.memory.session_logger import SessionLogger, TurnRecord
+
+        session_logger = SessionLogger(tmp_path / "sessions" / "abc123.jsonl")
+        for i in range(1, 4):
+            session_logger.append(TurnRecord(turn=i, role="user", content=f"query {i}"))
+            session_logger.append(TurnRecord(turn=i, role="assistant", content=f"answer {i}"))
+
+        summaries_dir = tmp_path / "summaries"
+        searcher = MemorySearcher()
+
+        llm = _mock_llm_registry({Role.RESEARCHER: "", Role.ANALYST: "", Role.STRATEGIST: ""})
+        engine = ConversationEngine(
+            llm,
+            DataRegistry(),
+            session_logger=session_logger,
+            memory_searcher=searcher,
+            summaries_dir=summaries_dir,
+        )
+
+        # Stub the compactor so we don't depend on reporter LLM wiring.
+        engine._compactor.needs_compaction = lambda _: True  # type: ignore[union-attr]
+
+        async def fake_compact_and_save(sl, out_dir):  # type: ignore[no-untyped-def]
+            out_dir.mkdir(parents=True, exist_ok=True)
+            md_path = out_dir / (sl.path.stem + ".md")
+            md_path.write_text("# Session Summary\n\n- Discussed AAPL earnings", encoding="utf-8")
+            return CompactionResult(
+                summary="# Session Summary\n\n- Discussed AAPL earnings",
+                turn_count=6,
+                input_tokens=100,
+                output_tokens=20,
+                cost=0.0,
+            )
+
+        engine._compactor.compact_and_save = fake_compact_and_save  # type: ignore[union-attr,method-assign]
+        engine._compactor.compact = AsyncMock()  # type: ignore[union-attr,method-assign]
+
+        await engine._maybe_compact()
+
+        # Tier 2: file on disk.
+        assert (summaries_dir / "abc123.md").exists()
+        # Tier 3: the auto-indexed row is directly observable on the index
+        # connection without relying on the FTS extension (which may be
+        # unavailable in sandboxed environments).
+        row = searcher.connection.execute(
+            "SELECT summary FROM session_index WHERE session_id = 'abc123'"
+        ).fetchone()
+        assert row is not None
+        assert "AAPL earnings" in row[0]
+        # Verified we took the save-branch, not the in-memory branch.
+        engine._compactor.compact.assert_not_called()  # type: ignore[union-attr]
+
+        searcher.close()
+
+    async def test_maybe_compact_falls_back_to_in_memory_without_dir(self, tmp_path) -> None:
+        """Without summaries_dir, compaction should call compact() (no disk)."""
+        from qracer.memory.session_compactor import CompactionResult
+        from qracer.memory.session_logger import SessionLogger, TurnRecord
+
+        session_logger = SessionLogger(tmp_path / "sessions" / "abc123.jsonl")
+        session_logger.append(TurnRecord(turn=1, role="user", content="hi"))
+
+        llm = _mock_llm_registry({Role.RESEARCHER: "", Role.ANALYST: "", Role.STRATEGIST: ""})
+        engine = ConversationEngine(llm, DataRegistry(), session_logger=session_logger)
+        assert engine._compactor is not None
+
+        engine._compactor.needs_compaction = lambda _: True  # type: ignore[method-assign]
+        engine._compactor.compact = AsyncMock(  # type: ignore[method-assign]
+            return_value=CompactionResult(
+                summary="x", turn_count=1, input_tokens=1, output_tokens=1, cost=0.0
+            )
+        )
+        engine._compactor.compact_and_save = AsyncMock()  # type: ignore[method-assign]
+
+        await engine._maybe_compact()
+
+        engine._compactor.compact.assert_awaited_once()
+        engine._compactor.compact_and_save.assert_not_called()
