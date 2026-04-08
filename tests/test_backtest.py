@@ -5,9 +5,7 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import AsyncMock
 
-import pytest
-
-from qracer.backtest import BacktestResult, Backtester, Trade, format_backtest_result
+from qracer.backtest import Backtester, BacktestResult, Trade, format_backtest_result
 from qracer.data.providers import OHLCV, PriceProvider
 from qracer.data.registry import DataRegistry
 from qracer.models.base import TradeThesis
@@ -34,8 +32,8 @@ def _make_thesis(
     )
 
 
-def _bar(d: date, o: float, h: float, l: float, c: float, v: int = 1_000_000) -> OHLCV:
-    return OHLCV(date=d, open=o, high=h, low=l, close=c, volume=v)
+def _bar(d: date, o: float, hi: float, lo: float, c: float, v: int = 1_000_000) -> OHLCV:
+    return OHLCV(date=d, open=o, high=hi, low=lo, close=c, volume=v)
 
 
 def _registry_with_bars(bars: list[OHLCV]) -> DataRegistry:
@@ -82,9 +80,7 @@ class TestSimulate:
         """If price stays above entry zone, no trades should fire."""
         bt = Backtester.__new__(Backtester)
         thesis = _make_thesis(entry_zone=(170.0, 175.0))
-        bars = [
-            _bar(date(2026, 1, i), 180.0, 185.0, 178.0, 180.0) for i in range(1, 11)
-        ]
+        bars = [_bar(date(2026, 1, i), 180.0, 185.0, 178.0, 180.0) for i in range(1, 11)]
         result = bt._simulate(thesis, bars, 180)
         assert result.entry_count == 0
 
@@ -195,9 +191,7 @@ class TestBacktesterRun:
         assert result.target_hit_count == 1
 
     async def test_run_with_no_matching_bars(self) -> None:
-        bars = [
-            _bar(date(2026, 1, i), 200.0, 210.0, 195.0, 205.0) for i in range(1, 6)
-        ]
+        bars = [_bar(date(2026, 1, i), 200.0, 210.0, 195.0, 205.0) for i in range(1, 6)]
         registry = _registry_with_bars(bars)
         thesis = _make_thesis(entry_zone=(170.0, 175.0))
         bt = Backtester(registry)

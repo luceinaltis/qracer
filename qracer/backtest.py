@@ -134,7 +134,12 @@ class Backtester:
         # Historical risk/reward: average win / abs(average loss)
         avg_win = sum(t.return_pct for t in wins) / len(wins) if wins else 0.0
         avg_loss = sum(t.return_pct for t in losses) / len(losses) if losses else 0.0
-        historical_rr = avg_win / abs(avg_loss) if avg_loss != 0 else float("inf") if avg_win > 0 else 0.0
+        if avg_loss != 0:
+            historical_rr = avg_win / abs(avg_loss)
+        elif avg_win > 0:
+            historical_rr = float("inf")
+        else:
+            historical_rr = 0.0
 
         return BacktestResult(
             ticker=ticker,
@@ -169,10 +174,7 @@ def format_backtest_result(result: BacktestResult, thesis: TradeThesis) -> str:
     open_trades = result.entry_count - result.target_hit_count - result.stop_hit_count
     lines.append(f"Simulated Trades: {result.entry_count}")
     lines.append(f"  \u2713 Win:  {result.target_hit_count} ({result.win_rate:.0f}%)")
-    lines.append(
-        f"  \u2717 Loss: {result.stop_hit_count} "
-        f"({100 - result.win_rate:.0f}%)"
-    )
+    lines.append(f"  \u2717 Loss: {result.stop_hit_count} ({100 - result.win_rate:.0f}%)")
     if open_trades > 0:
         lines.append(f"  \u25cc Open: {open_trades}")
     lines.append("")
