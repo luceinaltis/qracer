@@ -33,9 +33,7 @@ def _format_change(change: float) -> str:
     return f"{sign}{change:.2f}%"
 
 
-async def _fetch_prices(
-    data_registry: DataRegistry | None, tickers: list[str]
-) -> dict[str, float]:
+async def _fetch_prices(data_registry: DataRegistry | None, tickers: list[str]) -> dict[str, float]:
     """Fetch prices for *tickers* via ``PriceProvider`` fallback.
 
     Returns an empty dict if no registry is provided.  Failures for
@@ -50,9 +48,7 @@ async def _fetch_prices(
     prices: dict[str, float] = {}
     for ticker in tickers:
         try:
-            price = await data_registry.async_get_with_fallback(
-                PriceProvider, "get_price", ticker
-            )
+            price = await data_registry.async_get_with_fallback(PriceProvider, "get_price", ticker)
         except Exception as exc:  # noqa: BLE001 — log and continue
             logger.debug("Price fetch failed for %s: %s", ticker, exc)
             continue
@@ -132,9 +128,7 @@ class OverviewPanel(VerticalScroll):
                 market_value = h.shares * price
                 cost_basis = h.shares * h.avg_cost
                 pnl_pct = (
-                    ((market_value - cost_basis) / cost_basis * 100.0)
-                    if cost_basis > 0
-                    else 0.0
+                    ((market_value - cost_basis) / cost_basis * 100.0) if cost_basis > 0 else 0.0
                 )
                 price_str = f"${price:,.2f}"
                 value_str = f"${market_value:,.2f}"
@@ -198,9 +192,7 @@ class PortfolioPanel(VerticalScroll):
 
     def on_mount(self) -> None:
         table = self.query_one("#portfolio-table", DataTable)
-        table.add_columns(
-            "Ticker", "Shares", "Avg Cost", "Price", "Value", "Weight", "P&L %"
-        )
+        table.add_columns("Ticker", "Shares", "Avg Cost", "Price", "Value", "Weight", "P&L %")
         self._populate(table)
         self.set_interval(REFRESH_INTERVAL_SECONDS, self.refresh_data)
 
@@ -220,9 +212,7 @@ class PortfolioPanel(VerticalScroll):
             from qracer.risk.calculator import RiskCalculator
 
             snapshot = RiskCalculator(cfg.portfolio).build_snapshot(self._prices)
-            total_label.update(
-                f"Total value: ${snapshot.total_value:,.2f} {snapshot.currency}"
-            )
+            total_label.update(f"Total value: ${snapshot.total_value:,.2f} {snapshot.currency}")
             for hs in snapshot.holdings:
                 table.add_row(
                     hs.ticker,

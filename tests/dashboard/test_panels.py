@@ -179,9 +179,9 @@ class TestOverviewPanel:
             patch("qracer.dashboard.panels.load_config", return_value=cfg),
             patch("qracer.dashboard.panels._watchlist_path", return_value=wl_path),
         ):
-            async with _SinglePanelApp(
-                OverviewPanel, data_registry=fake
-            ).run_test(size=(80, 24)) as pilot:
+            async with _SinglePanelApp(OverviewPanel, data_registry=fake).run_test(
+                size=(80, 24)
+            ) as pilot:
                 panel = pilot.app.query_one(OverviewPanel)
                 await panel.refresh_data()
                 # Both tickers fetched
@@ -226,9 +226,9 @@ class TestPortfolioPanel:
         fake = _FakeRegistry({"AAPL": 180.0, "MSFT": 300.0})
 
         with patch("qracer.dashboard.panels.load_config", return_value=cfg):
-            async with _SinglePanelApp(
-                PortfolioPanel, data_registry=fake
-            ).run_test(size=(100, 30)) as pilot:
+            async with _SinglePanelApp(PortfolioPanel, data_registry=fake).run_test(
+                size=(100, 30)
+            ) as pilot:
                 panel = pilot.app.query_one(PortfolioPanel)
                 await panel.refresh_data()
                 # Prices cached
@@ -249,9 +249,9 @@ class TestPortfolioPanel:
         fake = _FakeRegistry({"AAPL": 180.0})
 
         with patch("qracer.dashboard.panels.load_config", return_value=cfg):
-            async with _SinglePanelApp(
-                PortfolioPanel, data_registry=fake
-            ).run_test(size=(100, 30)) as pilot:
+            async with _SinglePanelApp(PortfolioPanel, data_registry=fake).run_test(
+                size=(100, 30)
+            ) as pilot:
                 panel = pilot.app.query_one(PortfolioPanel)
                 await panel.refresh_data()
                 # Without complete price set, falls back to cost-basis view
@@ -288,9 +288,9 @@ class TestWatchlistPanel:
         fake = _FakeRegistry({"AAPL": 180.0, "TSLA": 250.0})
 
         with patch("qracer.dashboard.panels._watchlist_path", return_value=wl_path):
-            async with _SinglePanelApp(
-                WatchlistPanel, data_registry=fake
-            ).run_test(size=(80, 24)) as pilot:
+            async with _SinglePanelApp(WatchlistPanel, data_registry=fake).run_test(
+                size=(80, 24)
+            ) as pilot:
                 panel = pilot.app.query_one(WatchlistPanel)
                 await panel.refresh_data()
                 assert panel._prices == {"AAPL": 180.0, "TSLA": 250.0}
@@ -318,18 +318,14 @@ class TestAlertsPanel:
         store.create("AAPL", AlertCondition.ABOVE, 200.0)
         store.create("TSLA", AlertCondition.BELOW, 180.0)
 
-        async with _SinglePanelApp(
-            AlertsPanel, alert_store=store
-        ).run_test(size=(80, 24)) as pilot:
+        async with _SinglePanelApp(AlertsPanel, alert_store=store).run_test(size=(80, 24)) as pilot:
             table = pilot.app.query_one("#alerts-table", DataTable)
             assert table.row_count == 2
 
     @pytest.mark.asyncio
     async def test_alerts_hot_reload(self, tmp_path: Path) -> None:
         store = AlertStore(tmp_path / "alerts.json")
-        async with _SinglePanelApp(
-            AlertsPanel, alert_store=store
-        ).run_test(size=(80, 24)) as pilot:
+        async with _SinglePanelApp(AlertsPanel, alert_store=store).run_test(size=(80, 24)) as pilot:
             panel = pilot.app.query_one(AlertsPanel)
             table = pilot.app.query_one("#alerts-table", DataTable)
             assert table.row_count == 0
@@ -363,18 +359,14 @@ class TestTasksPanel:
         store.create(TaskActionType.ANALYZE, {"ticker": "AAPL"}, "every 1h")
         store.create(TaskActionType.NEWS_SCAN, {"ticker": "TSLA"}, "every 30m")
 
-        async with _SinglePanelApp(
-            TasksPanel, task_store=store
-        ).run_test(size=(100, 24)) as pilot:
+        async with _SinglePanelApp(TasksPanel, task_store=store).run_test(size=(100, 24)) as pilot:
             table = pilot.app.query_one("#tasks-table", DataTable)
             assert table.row_count == 2
 
     @pytest.mark.asyncio
     async def test_tasks_refresh_hot_reloads(self, tmp_path: Path) -> None:
         store = TaskStore(tmp_path / "tasks.json")
-        async with _SinglePanelApp(
-            TasksPanel, task_store=store
-        ).run_test(size=(100, 24)) as pilot:
+        async with _SinglePanelApp(TasksPanel, task_store=store).run_test(size=(100, 24)) as pilot:
             panel = pilot.app.query_one(TasksPanel)
             table = pilot.app.query_one("#tasks-table", DataTable)
             assert table.row_count == 0
