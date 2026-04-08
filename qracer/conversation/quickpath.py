@@ -50,7 +50,8 @@ _TEMPLATES: dict[str, dict[str, str]] = {
     "no_holdings": {
         "en": "  No holdings configured.\n  Add holdings to ~/.qracer/portfolio.toml",
         "ko": "  보유 종목이 없습니다.\n  ~/.qracer/portfolio.toml에 종목을 추가하세요",
-        "ja": "  保有銘柄が設定されていません。\n  ~/.qracer/portfolio.tomlに銘柄を追加してください",
+        "ja": "  保有銘柄が設定されていません。\n"
+        "  ~/.qracer/portfolio.tomlに銘柄を追加してください",
     },
 }
 

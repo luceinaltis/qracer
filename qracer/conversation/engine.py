@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from qracer.config.models import AppConfig, PortfolioConfig
+from qracer.config.models import PortfolioConfig
 from qracer.conversation.analysis_loop import (
     CONFIDENCE_THRESHOLD,
     MAX_ITERATIONS,
