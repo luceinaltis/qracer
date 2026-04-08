@@ -64,6 +64,7 @@ class TestSidebarWidget:
                     "portfolio",
                     "watchlist",
                     "alerts",
+                    "tasks",
                     "new-chat",
                     "history",
                     "general",
