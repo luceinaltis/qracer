@@ -1010,5 +1010,38 @@ def dashboard() -> None:
     app.run()
 
 
+# ---------------------------------------------------------------------------
+# qracer web
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option("--host", default="127.0.0.1", help="Host interface to bind to.")
+@click.option("--port", default=8000, type=int, help="TCP port to listen on.")
+def web(host: str, port: int) -> None:
+    """Launch the FastAPI web dashboard API."""
+    try:
+        import uvicorn
+
+        from qracer.web.app import create_app
+    except ImportError:
+        click.echo(
+            "Web dashboard requires FastAPI and uvicorn.\n"
+            "Install them with: pip install 'qracer[web]'"
+        )
+        raise SystemExit(1)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        stream=sys.stderr,
+    )
+
+    app = create_app()
+    click.echo(f"qracer web API listening on http://{host}:{port}")
+    click.echo("  Routes mounted under /api (try /api/health)")
+    uvicorn.run(app, host=host, port=port)
+
+
 if __name__ == "__main__":
     main()
