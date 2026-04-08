@@ -46,6 +46,17 @@ class ExposureBreakdown(BaseModel):
     correlation_data_unavailable: bool = False
 
 
+class RebalanceAction(BaseModel):
+    """A single suggested rebalancing action."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ticker: str
+    action: str  # "reduce" or "add"
+    shares_delta: float  # negative for sells, positive for buys
+    reason: str
+
+
 class RiskAssessment(BaseModel):
     """Full risk assessment combining snapshot, exposure, and limit checks."""
 
