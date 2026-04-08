@@ -943,7 +943,10 @@ def serve(check_interval: int) -> None:
 
     from qracer.alert_monitor import AlertMonitor
     from qracer.alerts import AlertStore
-    from qracer.notifications.factory import build_notification_registry
+    from qracer.notifications.factory import (
+        build_notification_registry,
+        build_telegram_poller,
+    )
     from qracer.pidfile import acquire, release
     from qracer.server import Server
     from qracer.task_executor import TaskExecutor
@@ -983,6 +986,7 @@ def serve(check_interval: int) -> None:
 
     config = load_config()
     notifications = build_notification_registry(config.credentials)
+    telegram_poller = build_telegram_poller(config.credentials)
 
     # Autonomous market monitoring
     from qracer.autonomous import AutonomousMonitor
@@ -1004,6 +1008,7 @@ def serve(check_interval: int) -> None:
         task_executor,
         notifications,
         autonomous_monitor=autonomous_monitor,
+        telegram_poller=telegram_poller,
         tick_interval=1.0,
     )
 
@@ -1023,6 +1028,8 @@ def serve(check_interval: int) -> None:
             f"  Autonomous monitoring: threshold={app_cfg.price_move_threshold_pct}%,"
             f" cooldown={app_cfg.alert_cooldown_minutes}m"
         )
+    if telegram_poller is not None:
+        click.echo("  Telegram bot: receiving commands (try /help in chat)")
     click.echo("  Press Ctrl+C to stop.\n")
 
     try:

@@ -5,11 +5,14 @@ from qracer.notifications.providers import (
 )
 from qracer.notifications.registry import NotificationRegistry
 from qracer.notifications.telegram_adapter import TelegramAdapter
+from qracer.notifications.telegram_poller import BotCommand, TelegramBotPoller
 
 __all__ = [
+    "BotCommand",
     "Notification",
     "NotificationCategory",
     "NotificationProvider",
     "NotificationRegistry",
     "TelegramAdapter",
+    "TelegramBotPoller",
 ]

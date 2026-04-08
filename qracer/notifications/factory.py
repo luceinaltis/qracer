@@ -15,6 +15,7 @@ import logging
 
 from qracer.notifications.registry import NotificationRegistry
 from qracer.notifications.telegram_adapter import TelegramAdapter
+from qracer.notifications.telegram_poller import TelegramBotPoller
 
 logger = logging.getLogger(__name__)
 
@@ -43,3 +44,26 @@ def build_notification_registry(
         )
 
     return registry
+
+
+def build_telegram_poller(
+    credentials: dict[str, str],
+    *,
+    timeout: int = 1,
+) -> TelegramBotPoller | None:
+    """Build a :class:`TelegramBotPoller` if Telegram credentials are present.
+
+    Returns ``None`` when ``TELEGRAM_BOT_TOKEN`` or ``TELEGRAM_CHAT_ID`` are
+    missing — callers should treat this as "no inbound bot integration".
+
+    The default ``timeout=1`` keeps the long-poll short enough to coexist
+    with the 1-second :class:`~qracer.server.Server` tick; standalone
+    callers can pass a larger value (e.g. 30) for true long-polling.
+    """
+    bot_token = credentials.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = credentials.get("TELEGRAM_CHAT_ID", "")
+    if not bot_token or not chat_id:
+        return None
+    poller = TelegramBotPoller(bot_token=bot_token, chat_id=chat_id, timeout=timeout)
+    logger.info("Telegram bot command poller initialised")
+    return poller
