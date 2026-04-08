@@ -1,4 +1,4 @@
-"""ReportExporter — saves analysis results to Markdown and JSON files.
+"""ReportExporter — saves analysis results to Markdown, JSON, and PDF files.
 
 Reports are stored in ``~/.qracer/reports/`` with filenames based on
 the primary ticker and date.
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReportExporter:
-    """Exports analysis results to Markdown and/or JSON files.
+    """Exports analysis results to Markdown, JSON, and/or PDF files.
 
     Usage::
 
@@ -155,3 +155,108 @@ class ReportExporter:
         path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
         logger.info("Report saved: %s", path)
         return path
+
+    def save_pdf(
+        self,
+        intent: Intent,
+        analysis: AnalysisResult,
+        response_text: str,
+    ) -> Path:
+        """Save the analysis as a PDF report.
+
+        Requires the optional ``fpdf2`` dependency. Install with::
+
+            uv pip install 'qracer[pdf]'
+
+        Returns the path to the saved file.
+        """
+        try:
+            from fpdf import FPDF
+        except ImportError as exc:  # pragma: no cover - exercised only without dep
+            raise ImportError(
+                "fpdf2 is required for PDF export. Install it with: uv pip install 'qracer[pdf]'"
+            ) from exc
+
+        ticker = intent.tickers[0] if intent.tickers else "general"
+        generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+
+        # Header — title and timestamp.
+        pdf.set_font("Helvetica", style="B", size=16)
+        pdf.cell(0, 10, _ascii_safe(f"qracer Analysis: {ticker}"), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", size=9)
+        pdf.set_text_color(120, 120, 120)
+        pdf.cell(0, 6, f"Generated: {generated_at}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(
+            0,
+            6,
+            _ascii_safe(f"Query: {intent.raw_query}"),
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+        pdf.cell(
+            0,
+            6,
+            f"Confidence: {analysis.confidence:.2f}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(4)
+
+        # Body — response text.
+        pdf.set_font("Helvetica", style="B", size=12)
+        pdf.cell(0, 8, "Response", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", size=11)
+        pdf.multi_cell(0, 6, _ascii_safe(response_text))
+        pdf.ln(2)
+
+        # Trade thesis section (when available).
+        if analysis.trade_thesis is not None:
+            t = analysis.trade_thesis
+            pdf.set_font("Helvetica", style="B", size=12)
+            pdf.cell(0, 8, "Trade Thesis", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", size=11)
+            thesis_lines = [
+                f"Ticker: {t.ticker}",
+                f"Entry Zone: ${t.entry_zone[0]:.2f} - ${t.entry_zone[1]:.2f}",
+                f"Target Price: ${t.target_price:.2f}",
+                f"Stop Loss: ${t.stop_loss:.2f}",
+                f"Risk/Reward: {t.risk_reward_ratio:.2f}",
+                f"Conviction: {t.conviction}/10",
+                f"Catalyst: {t.catalyst}",
+            ]
+            if t.catalyst_date:
+                thesis_lines.append(f"Catalyst Date: {t.catalyst_date}")
+            for line in thesis_lines:
+                pdf.cell(0, 6, _ascii_safe(line), new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(2)
+            pdf.multi_cell(0, 6, _ascii_safe(t.summary))
+            pdf.ln(2)
+
+        # Data sources — show success/failure status for every tool consulted.
+        if analysis.results:
+            pdf.set_font("Helvetica", style="B", size=12)
+            pdf.cell(0, 8, "Data Sources", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", size=11)
+            for r in analysis.results:
+                status = "OK" if r.success else "FAIL"
+                line = f"[{status}] {r.tool} ({r.source})"
+                pdf.cell(0, 6, _ascii_safe(line), new_x="LMARGIN", new_y="NEXT")
+
+        path = self._build_filename(intent, ".pdf")
+        pdf.output(str(path))
+        logger.info("Report saved: %s", path)
+        return path
+
+
+def _ascii_safe(text: str) -> str:
+    """Strip characters unsupported by fpdf2's built-in Helvetica font.
+
+    The default core fonts only support latin-1; replace anything outside
+    that range so we never crash on emoji or CJK in user input.
+    """
+    return text.encode("latin-1", "replace").decode("latin-1")

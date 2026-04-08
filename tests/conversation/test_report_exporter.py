@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from qracer.conversation.analysis_loop import AnalysisResult
 from qracer.conversation.intent import Intent, IntentType
 from qracer.conversation.report_exporter import ReportExporter
@@ -104,3 +106,46 @@ class TestReportExporterJson:
         path = exporter.save_json(_intent(), _analysis(with_thesis=False), "Response")
         data = json.loads(path.read_text())
         assert "trade_thesis" not in data
+
+
+class TestReportExporterPdf:
+    """PDF export tests — skipped when fpdf2 is not installed."""
+
+    @pytest.fixture(autouse=True)
+    def _require_fpdf(self) -> None:
+        pytest.importorskip("fpdf")
+
+    def test_save_basic(self, tmp_path) -> None:
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(), "Analysis text here.")
+        assert path.exists()
+        assert path.suffix == ".pdf"
+        # PDF files start with the %PDF- magic header.
+        assert path.read_bytes().startswith(b"%PDF-")
+        assert path.stat().st_size > 0
+        assert "AAPL" in path.name
+
+    def test_save_with_thesis(self, tmp_path) -> None:
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(with_thesis=True), "Response")
+        assert path.exists()
+        # File should be larger when a thesis is included.
+        size_with_thesis = path.stat().st_size
+        path_no_thesis = exporter.save_pdf(
+            _intent(tickers=["MSFT"]), _analysis(with_thesis=False), "Response"
+        )
+        assert size_with_thesis > path_no_thesis.stat().st_size
+
+    def test_general_ticker_fallback(self, tmp_path) -> None:
+        exporter = ReportExporter(tmp_path)
+        intent = Intent(intent_type=IntentType.MACRO_QUERY, tickers=[], raw_query="inflation?")
+        path = exporter.save_pdf(intent, _analysis(), "Response")
+        assert "general" in path.name
+        assert path.suffix == ".pdf"
+
+    def test_handles_non_latin1_text(self, tmp_path) -> None:
+        """Emoji / CJK in the response must not crash the latin-1 core font."""
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(), "Bullish on AAPL — 한국어 test 🚀")
+        assert path.exists()
+        assert path.read_bytes().startswith(b"%PDF-")
