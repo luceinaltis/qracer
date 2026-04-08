@@ -169,17 +169,23 @@ class ConversationEngine:
         """Save the last analysis result as a report file.
 
         Args:
-            fmt: ``"md"`` for Markdown, ``"json"`` for JSON.
+            fmt: ``"md"`` for Markdown, ``"json"`` for JSON, ``"pdf"`` for PDF.
 
         Returns:
             Path to the saved file, or None if no report exporter is
             configured or no previous response exists.
+
+        Raises:
+            ImportError: When ``fmt="pdf"`` and the optional ``fpdf2``
+                dependency is not installed.
         """
         if self._report_exporter is None or self._last_response is None:
             return None
         resp = self._last_response
         if fmt == "json":
             return self._report_exporter.save_json(resp.intent, resp.analysis, resp.text)
+        if fmt == "pdf":
+            return self._report_exporter.save_pdf(resp.intent, resp.analysis, resp.text)
         return self._report_exporter.save_markdown(resp.intent, resp.analysis, resp.text)
 
     def _log_turn(self, role: str, content: str, **kwargs: object) -> None:

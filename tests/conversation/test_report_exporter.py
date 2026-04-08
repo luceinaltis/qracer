@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from qracer.conversation.analysis_loop import AnalysisResult
 from qracer.conversation.intent import Intent, IntentType
 from qracer.conversation.report_exporter import ReportExporter
@@ -104,3 +106,96 @@ class TestReportExporterJson:
         path = exporter.save_json(_intent(), _analysis(with_thesis=False), "Response")
         data = json.loads(path.read_text())
         assert "trade_thesis" not in data
+
+
+# fpdf2 is an optional dependency; skip this whole class if it isn't installed.
+fpdf = pytest.importorskip("fpdf")
+
+
+def _read_pdf_text(path) -> str:
+    """Extract text from a PDF written by fpdf2.
+
+    fpdf2 wraps content streams in zlib (FlateDecode) by default, so we
+    walk the raw bytes, pull each ``stream ... endstream`` block, try to
+    decompress it, and grep for ``(string) Tj`` and ``[(string) ...] TJ``
+    text-showing operators. This avoids adding a PDF parser dependency
+    just for tests.
+    """
+    import re
+    import zlib
+
+    raw = path.read_bytes()
+    # PDF spec: a stream object is bracketed by the literal keywords
+    # `stream` and `endstream`, separated by EOL markers.
+    streams = re.findall(rb"stream\r?\n(.*?)\r?\nendstream", raw, re.DOTALL)
+    parts: list[str] = []
+    for chunk in streams:
+        try:
+            decoded = zlib.decompress(chunk)
+        except zlib.error:
+            decoded = chunk
+        text = decoded.decode("latin-1", errors="replace")
+        parts.extend(re.findall(r"\(((?:\\.|[^()])*)\)\s*Tj", text))
+        for arr in re.findall(r"\[(.*?)\]\s*TJ", text):
+            parts.extend(re.findall(r"\(((?:\\.|[^()])*)\)", arr))
+    return "\n".join(parts)
+
+
+class TestReportExporterPdf:
+    def test_save_basic(self, tmp_path) -> None:
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(), "Analysis text here.")
+        assert path.exists()
+        assert path.suffix == ".pdf"
+        # PDFs always start with the %PDF- magic bytes.
+        assert path.read_bytes().startswith(b"%PDF-")
+
+    def test_save_includes_header_and_response(self, tmp_path) -> None:
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(), "Analysis text here.")
+        text = _read_pdf_text(path)
+        assert "AAPL" in text
+        assert "Analysis text here." in text
+        assert "0.85" in text
+        assert "Response" in text
+
+    def test_save_with_thesis(self, tmp_path) -> None:
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(with_thesis=True), "Response body")
+        text = _read_pdf_text(path)
+        assert "Trade Thesis" in text
+        assert "$175.00" in text
+        assert "$200.00" in text
+        assert "8/10" in text
+        assert "AI revenue growth" in text
+        assert "Q2 2026" in text
+
+    def test_save_with_data_sources_status(self, tmp_path) -> None:
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(), "Response")
+        text = _read_pdf_text(path)
+        assert "Data Sources" in text
+        assert "price_event" in text
+        assert "news" in text
+        # Failed tools must be reported with a FAIL marker, per #138 spec.
+        assert "macro" in text
+        assert "[FAIL]" in text
+        assert "[OK]" in text
+
+    def test_general_ticker_fallback(self, tmp_path) -> None:
+        exporter = ReportExporter(tmp_path)
+        intent = Intent(intent_type=IntentType.MACRO_QUERY, tickers=[], raw_query="inflation?")
+        path = exporter.save_pdf(intent, _analysis(), "Response")
+        assert path.suffix == ".pdf"
+        assert "general" in path.name
+
+    def test_handles_unicode_in_response(self, tmp_path) -> None:
+        """Non-latin-1 characters must not crash PDF generation."""
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(
+            _intent(),
+            _analysis(),
+            "Earnings beat — strong demand in 한국 (Korea) 📈",
+        )
+        assert path.exists()
+        assert path.read_bytes().startswith(b"%PDF-")

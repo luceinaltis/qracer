@@ -1,4 +1,4 @@
-"""ReportExporter — saves analysis results to Markdown and JSON files.
+"""ReportExporter — saves analysis results to Markdown, JSON, and PDF files.
 
 Reports are stored in ``~/.qracer/reports/`` with filenames based on
 the primary ticker and date.
@@ -17,8 +17,18 @@ from qracer.conversation.intent import Intent
 logger = logging.getLogger(__name__)
 
 
+def _latin1_safe(text: str) -> str:
+    """Coerce text into the latin-1 range used by fpdf2's built-in fonts.
+
+    Any character that cannot be represented is replaced with ``?``. This
+    keeps PDF generation robust against unicode in tickers, queries, and
+    LLM-authored prose without forcing users to ship a TTF font.
+    """
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
 class ReportExporter:
-    """Exports analysis results to Markdown and/or JSON files.
+    """Exports analysis results to Markdown, JSON, and/or PDF files.
 
     Usage::
 
@@ -153,5 +163,113 @@ class ReportExporter:
 
         path = self._build_filename(intent, ".json")
         path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        logger.info("Report saved: %s", path)
+        return path
+
+    def save_pdf(
+        self,
+        intent: Intent,
+        analysis: AnalysisResult,
+        response_text: str,
+    ) -> Path:
+        """Save the analysis as a PDF report.
+
+        Returns the path to the saved file.
+
+        Raises:
+            ImportError: If the optional ``fpdf2`` dependency is not
+                installed. Install it with ``pip install qracer[pdf]``
+                or ``pip install fpdf2``.
+        """
+        try:
+            from fpdf import FPDF
+        except ImportError as exc:  # pragma: no cover - exercised in tests
+            raise ImportError(
+                "PDF export requires the optional 'fpdf2' dependency. "
+                "Install with: pip install 'qracer[pdf]'"
+            ) from exc
+
+        ticker = intent.tickers[0] if intent.tickers else "general"
+        generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+
+        # --- Header ---
+        pdf.set_font("Helvetica", style="B", size=18)
+        pdf.cell(0, 10, _latin1_safe(f"Analysis Report: {ticker}"), new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font("Helvetica", size=10)
+        pdf.cell(0, 6, _latin1_safe(f"Generated: {generated_at}"), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(
+            0, 6, _latin1_safe(f"Query: {intent.raw_query}"), new_x="LMARGIN", new_y="NEXT"
+        )
+        pdf.cell(
+            0,
+            6,
+            _latin1_safe(f"Intent: {intent.intent_type.value}"),
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+        pdf.cell(
+            0,
+            6,
+            _latin1_safe(f"Confidence: {analysis.confidence:.2f}"),
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+        pdf.ln(4)
+
+        # --- Response ---
+        pdf.set_font("Helvetica", style="B", size=14)
+        pdf.cell(0, 8, "Response", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", size=11)
+        pdf.multi_cell(0, 6, _latin1_safe(response_text))
+        pdf.ln(4)
+
+        # --- Trade Thesis ---
+        if analysis.trade_thesis is not None:
+            t = analysis.trade_thesis
+            pdf.set_font("Helvetica", style="B", size=14)
+            pdf.cell(0, 8, "Trade Thesis", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", size=11)
+
+            rows: list[tuple[str, str]] = [
+                ("Ticker", t.ticker),
+                ("Entry Zone", f"${t.entry_zone[0]:.2f} - ${t.entry_zone[1]:.2f}"),
+                ("Target Price", f"${t.target_price:.2f}"),
+                ("Stop Loss", f"${t.stop_loss:.2f}"),
+                ("Risk/Reward", f"{t.risk_reward_ratio:.2f}"),
+                ("Conviction", f"{t.conviction}/10"),
+                ("Catalyst", t.catalyst),
+            ]
+            if t.catalyst_date:
+                rows.append(("Catalyst Date", t.catalyst_date))
+
+            for label, value in rows:
+                pdf.multi_cell(
+                    0, 6, _latin1_safe(f"{label}: {value}"), new_x="LMARGIN", new_y="NEXT"
+                )
+
+            pdf.ln(2)
+            pdf.set_font("Helvetica", style="I", size=11)
+            pdf.multi_cell(0, 6, _latin1_safe(t.summary))
+            pdf.ln(4)
+
+        # --- Data Sources ---
+        if analysis.results:
+            pdf.set_font("Helvetica", style="B", size=14)
+            pdf.cell(0, 8, "Data Sources", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", size=11)
+            for r in analysis.results:
+                status = "[OK]" if r.success else "[FAIL]"
+                line = f"{status} {r.tool}"
+                if not r.success and r.error:
+                    line += f" - {r.error}"
+                pdf.cell(0, 6, _latin1_safe(line), new_x="LMARGIN", new_y="NEXT")
+
+        path = self._build_filename(intent, ".pdf")
+        pdf.output(str(path))
         logger.info("Report saved: %s", path)
         return path
