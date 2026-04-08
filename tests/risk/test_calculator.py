@@ -9,7 +9,8 @@ import pytest
 from qracer.config.models import Holding, PortfolioConfig, PortfolioLimits
 from qracer.models import TradeThesis
 from qracer.risk.calculator import RiskCalculator, SectorResolver, get_sector
-from qracer.risk.models import PortfolioSnapshot
+from qracer.risk.correlation import CorrelationResult
+from qracer.risk.models import PortfolioSnapshot, RebalanceAction
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -451,3 +452,235 @@ class TestSectorResolver:
         exposure = calc.build_exposure(calc.build_snapshot(prices))
         assert "Technology" in exposure.sector_weights
         assert "Financials" in exposure.sector_weights
+
+
+# ---------------------------------------------------------------------------
+# suggest_rebalance
+# ---------------------------------------------------------------------------
+
+
+class TestSuggestRebalance:
+    def test_no_breaches_returns_empty(self) -> None:
+        """When all limits are satisfied, no rebalancing is suggested."""
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[
+                Holding(ticker="AAPL", shares=10, avg_cost=150.0),
+                Holding(ticker="JPM", shares=10, avg_cost=140.0),
+            ],
+            limits=PortfolioLimits(max_single_position_pct=60.0, max_sector_pct=60.0),
+        )
+        calc = RiskCalculator(config)
+        snap = calc.build_snapshot({"AAPL": 150.0, "JPM": 150.0})
+        exposure = calc.build_exposure(snap)
+        actions = calc.suggest_rebalance(snap, exposure)
+        assert actions == []
+
+    def test_single_position_breach_suggests_reduce(self) -> None:
+        """A holding exceeding the single-position limit gets a reduce action."""
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[
+                Holding(ticker="AAPL", shares=100, avg_cost=150.0),
+                Holding(ticker="JPM", shares=10, avg_cost=140.0),
+            ],
+            limits=PortfolioLimits(max_single_position_pct=15.0, max_sector_pct=100.0),
+        )
+        calc = RiskCalculator(config)
+        # AAPL: 100*180=18000, JPM: 10*160=1600, total=19600
+        # AAPL weight: 18000/19600 ≈ 91.8% — far above 15%
+        snap = calc.build_snapshot({"AAPL": 180.0, "JPM": 160.0})
+        exposure = calc.build_exposure(snap)
+        actions = calc.suggest_rebalance(snap, exposure)
+
+        aapl_actions = [a for a in actions if a.ticker == "AAPL"]
+        assert len(aapl_actions) == 1
+        assert aapl_actions[0].action == "reduce"
+        assert aapl_actions[0].shares_delta < 0
+        reason = aapl_actions[0].reason.lower()
+        assert "exceeds" in reason
+
+    def test_sector_breach_reduces_largest_first(self) -> None:
+        """Sector breach reduces the largest position in that sector first."""
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[
+                Holding(ticker="AAPL", shares=100, avg_cost=150.0),
+                Holding(ticker="MSFT", shares=50, avg_cost=300.0),
+                Holding(ticker="JPM", shares=10, avg_cost=140.0),
+            ],
+            limits=PortfolioLimits(max_single_position_pct=100.0, max_sector_pct=40.0),
+        )
+        calc = RiskCalculator(config)
+        # AAPL: 100*180=18000, MSFT: 50*350=17500, JPM: 10*160=1600
+        # total=37100. Tech: 35500/37100 ≈ 95.7%, far above 40%
+        snap = calc.build_snapshot({"AAPL": 180.0, "MSFT": 350.0, "JPM": 160.0})
+        exposure = calc.build_exposure(snap)
+        actions = calc.suggest_rebalance(snap, exposure)
+
+        tech_actions = [a for a in actions if a.ticker in ("AAPL", "MSFT")]
+        assert len(tech_actions) > 0
+        # All tech actions should be "reduce"
+        assert all(a.action == "reduce" for a in tech_actions)
+        assert all(a.shares_delta < 0 for a in tech_actions)
+
+    def test_sector_breach_respects_minimum_weight(self) -> None:
+        """Sector reduction should not push a position below 5% weight."""
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[
+                Holding(ticker="AAPL", shares=50, avg_cost=150.0),
+                Holding(ticker="MSFT", shares=5, avg_cost=300.0),  # small position
+                Holding(ticker="JPM", shares=200, avg_cost=140.0),
+            ],
+            limits=PortfolioLimits(max_single_position_pct=100.0, max_sector_pct=20.0),
+        )
+        calc = RiskCalculator(config)
+        # AAPL: 50*180=9000, MSFT: 5*350=1750, JPM: 200*160=32000
+        # total=42750. Tech: 10750/42750 ≈ 25.1%, above 20%
+        # MSFT weight: 1750/42750 ≈ 4.1% — already below 5% floor
+        snap = calc.build_snapshot({"AAPL": 180.0, "MSFT": 350.0, "JPM": 160.0})
+        exposure = calc.build_exposure(snap)
+        actions = calc.suggest_rebalance(snap, exposure)
+
+        # MSFT should NOT be reduced (below 5% floor)
+        msft_actions = [a for a in actions if a.ticker == "MSFT"]
+        assert len(msft_actions) == 0
+
+    def test_empty_portfolio_returns_empty(self) -> None:
+        config = PortfolioConfig(currency="USD", holdings=[])
+        calc = RiskCalculator(config)
+        snap = calc.build_snapshot({})
+        exposure = calc.build_exposure(snap)
+        actions = calc.suggest_rebalance(snap, exposure)
+        assert actions == []
+
+    def test_rebalance_action_fields(self) -> None:
+        """Verify RebalanceAction model fields."""
+        action = RebalanceAction(
+            ticker="AAPL",
+            action="reduce",
+            shares_delta=-10.0,
+            reason="Over limit",
+        )
+        assert action.ticker == "AAPL"
+        assert action.action == "reduce"
+        assert action.shares_delta == -10.0
+        assert action.reason == "Over limit"
+
+    def test_no_duplicate_actions_for_single_and_sector_breach(self) -> None:
+        """A holding breaching both single-position and sector limits gets only one action."""
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[
+                Holding(ticker="AAPL", shares=100, avg_cost=150.0),
+                Holding(ticker="JPM", shares=10, avg_cost=140.0),
+            ],
+            limits=PortfolioLimits(max_single_position_pct=15.0, max_sector_pct=20.0),
+        )
+        calc = RiskCalculator(config)
+        snap = calc.build_snapshot({"AAPL": 180.0, "JPM": 160.0})
+        exposure = calc.build_exposure(snap)
+        actions = calc.suggest_rebalance(snap, exposure)
+
+        aapl_actions = [a for a in actions if a.ticker == "AAPL"]
+        # Should have exactly one action (single-position takes priority, sector skips duplicate)
+        assert len(aapl_actions) == 1
+
+
+# ---------------------------------------------------------------------------
+# suggest_additions
+# ---------------------------------------------------------------------------
+
+
+class TestSuggestAdditions:
+    def test_no_correlation_returns_first_three(self) -> None:
+        """Without correlation data, returns first 3 candidates."""
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[Holding(ticker="AAPL", shares=10, avg_cost=150.0)],
+        )
+        calc = RiskCalculator(config)
+        snap = calc.build_snapshot({"AAPL": 180.0})
+
+        candidates = ["XOM", "JNJ", "KO", "DIS"]
+        actions = calc.suggest_additions(candidates, snap)
+
+        assert len(actions) == 3
+        assert all(a.action == "add" for a in actions)
+        assert [a.ticker for a in actions] == ["XOM", "JNJ", "KO"]
+
+    def test_prefers_low_correlation_candidates(self) -> None:
+        """Candidates with lower average correlation rank first."""
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[
+                Holding(ticker="AAPL", shares=50, avg_cost=150.0),
+                Holding(ticker="MSFT", shares=50, avg_cost=300.0),
+            ],
+        )
+        calc = RiskCalculator(config)
+        snap = calc.build_snapshot({"AAPL": 180.0, "MSFT": 350.0})
+
+        corr = CorrelationResult(
+            portfolio_beta=1.0,
+            correlation_avg=0.5,
+            betas={"AAPL": 1.1, "MSFT": 1.2},
+            correlation_matrix={
+                "AAPL": {"MSFT": 0.9, "XOM": 0.2, "JNJ": 0.8, "KO": 0.3},
+                "MSFT": {"AAPL": 0.9, "XOM": 0.1, "JNJ": 0.7, "KO": 0.4},
+                "XOM": {"AAPL": 0.2, "MSFT": 0.1},
+                "JNJ": {"AAPL": 0.8, "MSFT": 0.7},
+                "KO": {"AAPL": 0.3, "MSFT": 0.4},
+            },
+        )
+
+        candidates = ["XOM", "JNJ", "KO"]
+        actions = calc.suggest_additions(candidates, snap, corr_result=corr)
+
+        assert len(actions) == 3
+        # XOM has lowest avg corr: (0.2+0.1)/2 = 0.15
+        # KO: (0.3+0.4)/2 = 0.35
+        # JNJ: (0.8+0.7)/2 = 0.75
+        assert actions[0].ticker == "XOM"
+        assert actions[1].ticker == "KO"
+        assert actions[2].ticker == "JNJ"
+
+    def test_skips_existing_holdings(self) -> None:
+        """Candidates already held should be excluded."""
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[Holding(ticker="AAPL", shares=10, avg_cost=150.0)],
+        )
+        calc = RiskCalculator(config)
+        snap = calc.build_snapshot({"AAPL": 180.0})
+
+        corr = CorrelationResult(
+            portfolio_beta=1.0,
+            correlation_avg=0.5,
+            betas={"AAPL": 1.1},
+            correlation_matrix={
+                "AAPL": {"XOM": 0.3},
+                "XOM": {"AAPL": 0.3},
+            },
+        )
+
+        candidates = ["AAPL", "XOM"]
+        actions = calc.suggest_additions(candidates, snap, corr_result=corr)
+
+        tickers = [a.ticker for a in actions]
+        assert "AAPL" not in tickers
+        assert "XOM" in tickers
+
+    def test_returns_at_most_three(self) -> None:
+        """Never returns more than 3 suggestions."""
+        config = PortfolioConfig(
+            currency="USD",
+            holdings=[Holding(ticker="AAPL", shares=10, avg_cost=150.0)],
+        )
+        calc = RiskCalculator(config)
+        snap = calc.build_snapshot({"AAPL": 180.0})
+
+        candidates = ["XOM", "JNJ", "KO", "DIS", "WMT"]
+        actions = calc.suggest_additions(candidates, snap)
+        assert len(actions) <= 3

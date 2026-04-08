@@ -4,6 +4,7 @@ from qracer.risk.models import (
     ExposureBreakdown,
     HoldingSnapshot,
     PortfolioSnapshot,
+    RebalanceAction,
     RiskAssessment,
 )
 
@@ -13,6 +14,7 @@ __all__ = [
     "ExposureBreakdown",
     "HoldingSnapshot",
     "PortfolioSnapshot",
+    "RebalanceAction",
     "RiskAssessment",
     "RiskCalculator",
     "SectorResolver",

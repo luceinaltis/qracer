@@ -22,6 +22,7 @@ from qracer.llm.registry import LLMRegistry
 from qracer.memory.memory_searcher import MemorySearcher
 from qracer.models import ToolResult, TradeThesis
 from qracer.risk.calculator import RiskCalculator
+from qracer.risk.models import RebalanceAction
 from qracer.tools import pipeline
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,16 @@ class PortfolioHandler:
 
         calculator = RiskCalculator(self._portfolio_config)
         snapshot = calculator.build_snapshot(prices)
+        exposure = calculator.build_exposure(snapshot)
+        breached = calculator.check_limits(snapshot, exposure)
+
         text = format_portfolio(snapshot, language=self._language)
+
+        if breached:
+            suggestions = calculator.suggest_rebalance(snapshot, exposure)
+            if suggestions:
+                text += "\n\n" + _format_rebalance_suggestions(suggestions)
+
         return HandlerResult(text=text, analysis=AnalysisResult(confidence=1.0, iterations=0))
 
 
@@ -213,3 +223,14 @@ class StandardHandler:
         # Synthesize response.
         text = await self._synthesizer.synthesize(intent, analysis)
         return HandlerResult(text=text, analysis=analysis)
+
+
+def _format_rebalance_suggestions(suggestions: list[RebalanceAction]) -> str:
+    """Format rebalancing suggestions for display."""
+    lines = ["Rebalancing Suggestions:"]
+    for s in suggestions:
+        if s.action == "reduce":
+            lines.append(f"  REDUCE {s.ticker}: sell {abs(s.shares_delta):.0f} shares — {s.reason}")
+        else:
+            lines.append(f"  ADD {s.ticker} — {s.reason}")
+    return "\n".join(lines)
