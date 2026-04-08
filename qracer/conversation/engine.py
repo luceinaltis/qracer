@@ -69,12 +69,14 @@ class ConversationEngine:
         session_logger: SessionLogger | None = None,
         report_dir: Path | None = None,
         memory_searcher: MemorySearcher | None = None,
+        language: str = "en",
     ) -> None:
         self._llm = llm_registry
         self._data = data_registry
         self._intent_parser = IntentParser(llm_registry)
         self._portfolio_config = portfolio_config or PortfolioConfig()
         self._memory_searcher = memory_searcher
+        self._language = language
 
         analysis_loop = AnalysisLoop(
             llm_registry,
@@ -82,12 +84,16 @@ class ConversationEngine:
             max_iterations=max_iterations,
             confidence_threshold=confidence_threshold,
         )
-        synthesizer = ResponseSynthesizer(llm_registry)
-        comparison_synthesizer = ComparisonSynthesizer(llm_registry)
+        synthesizer = ResponseSynthesizer(llm_registry, language=language)
+        comparison_synthesizer = ComparisonSynthesizer(llm_registry, language=language)
 
         # Intent handlers — each owns one branch of the query flow.
-        self._portfolio_handler = PortfolioHandler(data_registry, self._portfolio_config)
-        self._quickpath_handler = QuickPathHandler(data_registry, memory_searcher)
+        self._portfolio_handler = PortfolioHandler(
+            data_registry, self._portfolio_config, language=language
+        )
+        self._quickpath_handler = QuickPathHandler(
+            data_registry, memory_searcher, language=language
+        )
         self._comparison_handler = ComparisonHandler(
             data_registry, comparison_synthesizer, memory_searcher
         )
@@ -129,11 +135,16 @@ class ConversationEngine:
             max_iterations=self._standard_handler._analysis_loop._max_iterations,
             confidence_threshold=self._standard_handler._analysis_loop._confidence_threshold,
         )
-        synthesizer = ResponseSynthesizer(llm_registry)
-        comparison_synthesizer = ComparisonSynthesizer(llm_registry)
+        lang = self._language
+        synthesizer = ResponseSynthesizer(llm_registry, language=lang)
+        comparison_synthesizer = ComparisonSynthesizer(llm_registry, language=lang)
 
-        self._portfolio_handler = PortfolioHandler(data_registry, self._portfolio_config)
-        self._quickpath_handler = QuickPathHandler(data_registry, self._memory_searcher)
+        self._portfolio_handler = PortfolioHandler(
+            data_registry, self._portfolio_config, language=lang
+        )
+        self._quickpath_handler = QuickPathHandler(
+            data_registry, self._memory_searcher, language=lang
+        )
         self._comparison_handler = ComparisonHandler(
             data_registry, comparison_synthesizer, self._memory_searcher
         )

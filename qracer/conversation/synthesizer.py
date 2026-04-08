@@ -14,6 +14,15 @@ from qracer.models import ToolResult
 logger = logging.getLogger(__name__)
 
 
+def _language_instruction(language: str) -> str:
+    """Return an LLM instruction suffix for the given language code."""
+    if language == "en":
+        return ""
+    names = {"ko": "Korean", "ja": "Japanese"}
+    name = names.get(language, language)
+    return f"\n\nIMPORTANT: Write your ENTIRE response in {name}."
+
+
 class ResponseSynthesizer:
     """Synthesizes a final response from analysis results.
 
@@ -21,8 +30,9 @@ class ResponseSynthesizer:
     conviction score.
     """
 
-    def __init__(self, llm_registry: LLMRegistry) -> None:
+    def __init__(self, llm_registry: LLMRegistry, *, language: str = "en") -> None:
         self._llm = llm_registry
+        self._language = language
 
     async def synthesize(self, intent: Intent, analysis: AnalysisResult) -> str:
         """Generate the final user-facing response."""
@@ -47,6 +57,7 @@ class ResponseSynthesizer:
             "VERDICT\n"
             "{{final judgment with conviction score and key qualifier}}"
         )
+        system += _language_instruction(self._language)
 
         caveats = ""
         if failed_tools:
@@ -101,8 +112,9 @@ class ResponseSynthesizer:
 class ComparisonSynthesizer:
     """Synthesizes a side-by-side comparison for multiple tickers."""
 
-    def __init__(self, llm_registry: LLMRegistry) -> None:
+    def __init__(self, llm_registry: LLMRegistry, *, language: str = "en") -> None:
         self._llm = llm_registry
+        self._language = language
 
     async def synthesize(
         self, intent: Intent, per_ticker_results: dict[str, list[ToolResult]]
@@ -134,6 +146,7 @@ class ComparisonSynthesizer:
             "{{comparative analysis: which ticker is stronger and why, "
             "1-3 sentences}}"
         )
+        system += _language_instruction(self._language)
         user_msg = f"Query: {intent.raw_query}\n\nEvidence per ticker:\n{combined_evidence}"
 
         try:

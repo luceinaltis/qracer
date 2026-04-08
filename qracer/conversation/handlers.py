@@ -42,9 +42,12 @@ class PortfolioHandler:
         self,
         data_registry: DataRegistry,
         portfolio_config: PortfolioConfig,
+        *,
+        language: str = "en",
     ) -> None:
         self._data = data_registry
         self._portfolio_config = portfolio_config
+        self._language = language
 
     async def handle(self, intent: Intent) -> HandlerResult:
         if not self._portfolio_config.holdings:
@@ -66,7 +69,7 @@ class PortfolioHandler:
 
         calculator = RiskCalculator(self._portfolio_config)
         snapshot = calculator.build_snapshot(prices)
-        text = format_portfolio(snapshot)
+        text = format_portfolio(snapshot, language=self._language)
         return HandlerResult(text=text, analysis=AnalysisResult(confidence=1.0, iterations=0))
 
 
@@ -77,15 +80,18 @@ class QuickPathHandler:
         self,
         data_registry: DataRegistry,
         memory_searcher: MemorySearcher | None = None,
+        *,
+        language: str = "en",
     ) -> None:
         self._data = data_registry
         self._memory_searcher = memory_searcher
+        self._language = language
 
     async def handle(self, intent: Intent) -> HandlerResult:
         results = await invoke_tools(
             intent.tools, intent, self._data, memory_searcher=self._memory_searcher
         )
-        text = format_quickpath(intent, results)
+        text = format_quickpath(intent, results, language=self._language)
         return HandlerResult(
             text=text, analysis=AnalysisResult(results=results, confidence=1.0, iterations=0)
         )

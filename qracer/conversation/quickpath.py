@@ -12,28 +12,77 @@ from qracer.conversation.intent import Intent, IntentType
 from qracer.models import ToolResult
 from qracer.risk.models import PortfolioSnapshot
 
+# ---------------------------------------------------------------------------
+# i18n template lookup tables
+# ---------------------------------------------------------------------------
 
-def format_quickpath(intent: Intent, results: list[ToolResult]) -> str:
+_TEMPLATES: dict[str, dict[str, str]] = {
+    "price_unavailable": {
+        "en": "{ticker}: price unavailable",
+        "ko": "{ticker}: 가격 정보 없음",
+        "ja": "{ticker}: 価格情報なし",
+    },
+    "no_news_available": {
+        "en": "{ticker}: no news available",
+        "ko": "{ticker}: 뉴스 없음",
+        "ja": "{ticker}: ニュースなし",
+    },
+    "no_recent_news": {
+        "en": "{ticker}: no recent news",
+        "ko": "{ticker}: 최근 뉴스 없음",
+        "ja": "{ticker}: 最近のニュースなし",
+    },
+    "news_header": {
+        "en": "News for {ticker} ({count} articles):",
+        "ko": "{ticker} 뉴스 ({count}건):",
+        "ja": "{ticker} ニュース ({count}件):",
+    },
+    "no_data": {
+        "en": "No data available.",
+        "ko": "데이터 없음.",
+        "ja": "データなし。",
+    },
+    "portfolio_summary": {
+        "en": "Portfolio Summary (as of {time})",
+        "ko": "포트폴리오 요약 ({time} 기준)",
+        "ja": "ポートフォリオ概要（{time}時点）",
+    },
+    "no_holdings": {
+        "en": "  No holdings configured.\n  Add holdings to ~/.qracer/portfolio.toml",
+        "ko": "  보유 종목이 없습니다.\n  ~/.qracer/portfolio.toml에 종목을 추가하세요",
+        "ja": "  保有銘柄が設定されていません。\n"
+        "  ~/.qracer/portfolio.tomlに銘柄を追加してください",
+    },
+}
+
+
+def _t(key: str, language: str = "en", **kwargs: object) -> str:
+    """Look up a translated template and format it with kwargs."""
+    templates = _TEMPLATES.get(key, {})
+    template = templates.get(language, templates.get("en", key))
+    return template.format(**kwargs)
+
+
+def format_quickpath(intent: Intent, results: list[ToolResult], *, language: str = "en") -> str:
     """Format tool results into a compact template response.
 
     No LLM call required — pure string formatting.
     """
     if intent.intent_type == IntentType.PRICE_CHECK:
-        return _format_price_check(intent, results)
+        return _format_price_check(intent, results, language=language)
     if intent.intent_type == IntentType.QUICK_NEWS:
-        return _format_quick_news(intent, results)
-    return _format_generic(intent, results)
+        return _format_quick_news(intent, results, language=language)
+    return _format_generic(intent, results, language=language)
 
 
-def format_portfolio(snapshot: PortfolioSnapshot) -> str:
+def format_portfolio(snapshot: PortfolioSnapshot, *, language: str = "en") -> str:
     """Format a portfolio snapshot into a readable summary table."""
     now = datetime.now().strftime("%H:%M")
-    lines = [f"Portfolio Summary (as of {now})"]
+    lines = [_t("portfolio_summary", language, time=now)]
     lines.append("")
 
     if not snapshot.holdings:
-        lines.append("  No holdings configured.")
-        lines.append("  Add holdings to ~/.qracer/portfolio.toml")
+        lines.append(_t("no_holdings", language))
         return "\n".join(lines)
 
     # Header
@@ -60,20 +109,20 @@ def format_portfolio(snapshot: PortfolioSnapshot) -> str:
     return "\n".join(lines)
 
 
-def _format_price_check(intent: Intent, results: list[ToolResult]) -> str:
+def _format_price_check(intent: Intent, results: list[ToolResult], *, language: str = "en") -> str:
     """Format price data into a compact one-liner."""
     ticker = intent.tickers[0] if intent.tickers else "?"
     price_result = next((r for r in results if r.tool == "price_event" and r.success), None)
 
     if price_result is None:
-        return f"{ticker}: price unavailable"
+        return _t("price_unavailable", language, ticker=ticker)
 
     data = price_result.data
     price = data.get("current_price")
     bars = data.get("ohlcv", [])
 
     if price is None:
-        return f"{ticker}: price unavailable"
+        return _t("price_unavailable", language, ticker=ticker)
 
     parts = [f"{ticker}: ${price:,.2f}"]
 
@@ -104,19 +153,19 @@ def _format_price_check(intent: Intent, results: list[ToolResult]) -> str:
     return " | ".join(parts)
 
 
-def _format_quick_news(intent: Intent, results: list[ToolResult]) -> str:
+def _format_quick_news(intent: Intent, results: list[ToolResult], *, language: str = "en") -> str:
     """Format news articles into a brief list."""
     ticker = intent.tickers[0] if intent.tickers else "?"
     news_result = next((r for r in results if r.tool == "news" and r.success), None)
 
     if news_result is None:
-        return f"{ticker}: no news available"
+        return _t("no_news_available", language, ticker=ticker)
 
     articles = news_result.data.get("articles", [])
     if not articles:
-        return f"{ticker}: no recent news"
+        return _t("no_recent_news", language, ticker=ticker)
 
-    lines = [f"News for {ticker} ({len(articles)} articles):"]
+    lines = [_t("news_header", language, ticker=ticker, count=len(articles))]
     for a in articles[:5]:
         title = a.get("title", "Untitled")
         source = a.get("source", "")
@@ -133,11 +182,11 @@ def _format_quick_news(intent: Intent, results: list[ToolResult]) -> str:
     return "\n".join(lines)
 
 
-def _format_generic(intent: Intent, results: list[ToolResult]) -> str:
+def _format_generic(intent: Intent, results: list[ToolResult], *, language: str = "en") -> str:
     """Fallback for unhandled QuickPath intents."""
     successful = [r for r in results if r.success]
     if not successful:
-        return "No data available."
+        return _t("no_data", language)
     parts = []
     for r in successful:
         parts.append(f"[{r.tool}] {r.source}: {len(r.data)} fields")
