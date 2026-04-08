@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from qracer.conversation.analysis_loop import AnalysisResult
 from qracer.conversation.intent import Intent, IntentType
 from qracer.conversation.report_exporter import ReportExporter
@@ -104,3 +106,60 @@ class TestReportExporterJson:
         path = exporter.save_json(_intent(), _analysis(with_thesis=False), "Response")
         data = json.loads(path.read_text())
         assert "trade_thesis" not in data
+
+
+class TestReportExporterPdf:
+    """PDF export requires the optional ``fpdf2`` dependency."""
+
+    def test_save_basic(self, tmp_path) -> None:
+        pytest.importorskip("fpdf")
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(), "Analysis text here.")
+        assert path.exists()
+        assert path.suffix == ".pdf"
+        # PDF files start with the %PDF- magic header.
+        assert path.read_bytes().startswith(b"%PDF-")
+        assert path.stat().st_size > 0
+
+    def test_save_with_thesis(self, tmp_path) -> None:
+        pytest.importorskip("fpdf")
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(with_thesis=True), "Response")
+        assert path.exists()
+        # fpdf2 compresses streams, so we only assert that the file is larger
+        # than a minimal "no thesis" report — a rough sanity check.
+        baseline = exporter.save_pdf(_intent(tickers=["MSFT"]), _analysis(), "Response")
+        assert path.stat().st_size > baseline.stat().st_size
+
+    def test_general_ticker_fallback(self, tmp_path) -> None:
+        pytest.importorskip("fpdf")
+        exporter = ReportExporter(tmp_path)
+        intent = Intent(intent_type=IntentType.MACRO_QUERY, tickers=[], raw_query="inflation?")
+        path = exporter.save_pdf(intent, _analysis(), "Response")
+        assert "general" in path.name
+        assert path.suffix == ".pdf"
+
+    def test_unicode_response_sanitized(self, tmp_path) -> None:
+        """Smart quotes and em dashes must not crash fpdf2's Latin-1 encoder."""
+        pytest.importorskip("fpdf")
+        exporter = ReportExporter(tmp_path)
+        unicode_text = "AAPL \u2014 strong \u201cbuy\u201d signal \u2026 bullish \u2022 growth"
+        path = exporter.save_pdf(_intent(), _analysis(), unicode_text)
+        assert path.exists()
+        assert path.read_bytes().startswith(b"%PDF-")
+
+    def test_raises_when_fpdf_missing(self, tmp_path, monkeypatch) -> None:
+        """save_pdf should raise a helpful ImportError if fpdf2 is not installed."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "fpdf":
+                raise ImportError("No module named 'fpdf'")
+            return real_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        exporter = ReportExporter(tmp_path)
+        with pytest.raises(ImportError, match="fpdf2"):
+            exporter.save_pdf(_intent(), _analysis(), "Response")

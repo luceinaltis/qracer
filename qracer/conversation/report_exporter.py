@@ -1,4 +1,4 @@
-"""ReportExporter — saves analysis results to Markdown and JSON files.
+"""ReportExporter — saves analysis results to Markdown, JSON, and PDF files.
 
 Reports are stored in ``~/.qracer/reports/`` with filenames based on
 the primary ticker and date.
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReportExporter:
-    """Exports analysis results to Markdown and/or JSON files.
+    """Exports analysis results to Markdown, JSON, and/or PDF files.
 
     Usage::
 
@@ -155,3 +155,120 @@ class ReportExporter:
         path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
         logger.info("Report saved: %s", path)
         return path
+
+    def save_pdf(
+        self,
+        intent: Intent,
+        analysis: AnalysisResult,
+        response_text: str,
+    ) -> Path:
+        """Save the analysis as a formatted PDF report.
+
+        Requires the optional ``fpdf2`` dependency. Install with::
+
+            pip install 'qracer[pdf]'
+
+        Returns the path to the saved file.
+        """
+        try:
+            from fpdf import FPDF
+        except ImportError as exc:  # pragma: no cover - trivial import guard
+            raise ImportError(
+                "PDF export requires the 'fpdf2' package. Install with: pip install 'qracer[pdf]'"
+            ) from exc
+
+        ticker = intent.tickers[0] if intent.tickers else "general"
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+
+        # Header
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.cell(0, 10, f"qracer Analysis: {ticker}", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(
+            0,
+            6,
+            f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+            align="C",
+        )
+        pdf.cell(0, 6, f"Query: {intent.raw_query}", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.cell(
+            0,
+            6,
+            f"Intent: {intent.intent_type.value} | Confidence: {analysis.confidence:.2f}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+            align="C",
+        )
+        pdf.ln(6)
+
+        # Response body
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 10, "Response", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 11)
+        pdf.multi_cell(0, 6, _sanitize_pdf_text(response_text))
+
+        # Trade thesis section (if present)
+        if analysis.trade_thesis is not None:
+            t = analysis.trade_thesis
+            pdf.ln(4)
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.cell(0, 10, "Trade Thesis", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 11)
+            thesis_lines = [
+                f"Ticker: {t.ticker}",
+                f"Entry Zone: ${t.entry_zone[0]:.2f} - ${t.entry_zone[1]:.2f}",
+                f"Target: ${t.target_price:.2f} | Stop: ${t.stop_loss:.2f}",
+                f"Risk/Reward: {t.risk_reward_ratio:.2f}x",
+                f"Conviction: {t.conviction}/10",
+                f"Catalyst: {t.catalyst}",
+            ]
+            if t.catalyst_date:
+                thesis_lines.append(f"Catalyst Date: {t.catalyst_date}")
+            thesis_lines.extend(["", t.summary])
+            pdf.multi_cell(0, 6, _sanitize_pdf_text("\n".join(thesis_lines)))
+
+        # Data sources used (only successful tools, matching markdown behavior)
+        successful = [r for r in analysis.results if r.success]
+        if successful:
+            pdf.ln(4)
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.cell(0, 10, "Data Sources", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 10)
+            for r in successful:
+                line = f"  - [{r.tool}] {r.source}"
+                pdf.cell(0, 5, _sanitize_pdf_text(line), new_x="LMARGIN", new_y="NEXT")
+
+        path = self._output_dir / f"{ticker}-{today}.pdf"
+        pdf.output(str(path))
+        logger.info("Report saved: %s", path)
+        return path
+
+
+def _sanitize_pdf_text(text: str) -> str:
+    """Replace characters outside Latin-1 with ASCII substitutes.
+
+    fpdf2's built-in Helvetica font is limited to the Latin-1 range, so we
+    normalise common Unicode punctuation (smart quotes, em dashes, bullets)
+    and strip any remaining non-encodable characters. This keeps PDF export
+    working without requiring users to ship a Unicode TTF font.
+    """
+    replacements = {
+        "\u2014": "-",  # em dash
+        "\u2013": "-",  # en dash
+        "\u2018": "'",  # left single quote
+        "\u2019": "'",  # right single quote / apostrophe
+        "\u201c": '"',  # left double quote
+        "\u201d": '"',  # right double quote
+        "\u2026": "...",  # ellipsis
+        "\u2022": "-",  # bullet
+        "\u00a0": " ",  # non-breaking space
+    }
+    for src, dst in replacements.items():
+        text = text.replace(src, dst)
+    return text.encode("latin-1", errors="replace").decode("latin-1")

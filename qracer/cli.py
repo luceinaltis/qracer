@@ -33,7 +33,7 @@ BANNER = """\
 ║  qracer — conversational alpha engine   ║
 ╚══════════════════════════════════════════╝
 Type your query, or 'quit' to exit.
-Commands: save, save json, backtest, help
+Commands: save, save json, save pdf, backtest, help
 """
 
 
@@ -350,6 +350,7 @@ _HELP_TEXT = """\
 Available commands:
   save              Save last analysis as Markdown
   save json         Save last analysis as JSON
+  save pdf          Save last analysis as PDF (requires 'qracer[pdf]' extra)
   backtest          Backtest the last trade thesis against historical data
   watchlist         Show watchlist with current prices
   watch TICKER      Add ticker to watchlist
@@ -494,6 +495,18 @@ async def _repl_loop(
 
         if cmd in ("save json", "/save json"):
             path = engine.save_last_report(fmt="json")  # type: ignore[attr-defined]
+            if path:
+                click.echo(f"Saved to {path}\n")
+            else:
+                click.echo("No analysis to save. Run a query first.\n")
+            continue
+
+        if cmd in ("save pdf", "/save pdf"):
+            try:
+                path = engine.save_last_report(fmt="pdf")  # type: ignore[attr-defined]
+            except ImportError as exc:
+                click.echo(f"{exc}\n")
+                continue
             if path:
                 click.echo(f"Saved to {path}\n")
             else:
