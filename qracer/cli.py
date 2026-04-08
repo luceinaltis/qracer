@@ -33,7 +33,7 @@ BANNER = """\
 ║  qracer — conversational alpha engine   ║
 ╚══════════════════════════════════════════╝
 Type your query, or 'quit' to exit.
-Commands: save, save json, help
+Commands: save, save json, backtest, help
 """
 
 
@@ -350,6 +350,7 @@ _HELP_TEXT = """\
 Available commands:
   save              Save last analysis as Markdown
   save json         Save last analysis as JSON
+  backtest          Backtest the last trade thesis against historical data
   watchlist         Show watchlist with current prices
   watch TICKER      Add ticker to watchlist
   unwatch TICKER    Remove ticker from watchlist
@@ -379,6 +380,7 @@ async def _repl_loop(
     watchlist: object,
     alert_monitor: object | None = None,
     task_executor: object | None = None,
+    data_registry: object | None = None,
 ) -> None:
     """Run the interactive read-eval-print loop."""
     from qracer.alert_monitor import AlertMonitor
@@ -515,6 +517,11 @@ async def _repl_loop(
             _handle_cancel_task(user_input, executor)
             continue
 
+        # Backtest command
+        if cmd in ("backtest", "/backtest"):
+            await _handle_backtest(engine, data_registry)
+            continue
+
         # Show progress while query is processing.
         click.echo("Analyzing...", nl=False)
         try:
@@ -531,6 +538,35 @@ async def _repl_loop(
             logger.exception("Error processing query")
             click.echo(f"Something went wrong: {type(exc).__name__}")
             click.echo("Hint: try rephrasing your query or check 'qracer status'.\n")
+
+
+async def _handle_backtest(engine: object, data_registry: object | None) -> None:
+    """Run a backtest on the last trade thesis."""
+    from qracer.backtest import Backtester, format_backtest_result
+    from qracer.conversation.engine import ConversationEngine
+
+    eng: ConversationEngine = engine  # type: ignore[assignment]
+    last = eng._last_response
+    if last is None or last.analysis.trade_thesis is None:
+        click.echo("No trade thesis to backtest. Run an analysis first.\n")
+        return
+
+    if data_registry is None:
+        click.echo("Backtest unavailable (no data provider configured).\n")
+        return
+
+    thesis = last.analysis.trade_thesis
+    backtester = Backtester(data_registry)  # type: ignore[arg-type]
+    click.echo("Backtesting...", nl=False)
+    try:
+        result = await backtester.run(thesis)
+        click.echo("\r" + " " * 20 + "\r", nl=False)
+        click.echo(format_backtest_result(result, thesis))
+        click.echo()
+    except Exception as exc:
+        click.echo("\r" + " " * 20 + "\r", nl=False)
+        logger.exception("Backtest failed")
+        click.echo(f"Backtest failed: {type(exc).__name__}: {exc}\n")
 
 
 def _show_alerts(monitor: object | None) -> None:
@@ -884,7 +920,13 @@ def repl() -> None:
     task_executor = TaskExecutor(task_store, data_registry, llm_registry, engine=engine)
 
     asyncio.run(
-        _repl_loop(engine, watchlist, alert_monitor=alert_monitor, task_executor=task_executor)
+        _repl_loop(
+            engine,
+            watchlist,
+            alert_monitor=alert_monitor,
+            task_executor=task_executor,
+            data_registry=data_registry,
+        )
     )
 
 
