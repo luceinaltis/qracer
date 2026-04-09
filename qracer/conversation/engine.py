@@ -169,7 +169,7 @@ class ConversationEngine:
         """Save the last analysis result as a report file.
 
         Args:
-            fmt: ``"md"`` for Markdown, ``"json"`` for JSON.
+            fmt: ``"md"`` for Markdown, ``"json"`` for JSON, ``"pdf"`` for PDF.
 
         Returns:
             Path to the saved file, or None if no report exporter is
@@ -180,6 +180,8 @@ class ConversationEngine:
         resp = self._last_response
         if fmt == "json":
             return self._report_exporter.save_json(resp.intent, resp.analysis, resp.text)
+        if fmt == "pdf":
+            return self._report_exporter.save_pdf(resp.intent, resp.analysis, resp.text)
         return self._report_exporter.save_markdown(resp.intent, resp.analysis, resp.text)
 
     def _log_turn(self, role: str, content: str, **kwargs: object) -> None:

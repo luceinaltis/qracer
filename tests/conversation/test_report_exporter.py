@@ -3,11 +3,36 @@
 from __future__ import annotations
 
 import json
+import re
+import zlib
+
+import pytest
 
 from qracer.conversation.analysis_loop import AnalysisResult
 from qracer.conversation.intent import Intent, IntentType
 from qracer.conversation.report_exporter import ReportExporter
 from qracer.models import ToolResult, TradeThesis
+
+
+def _extract_pdf_text(pdf_bytes: bytes) -> bytes:
+    """Decompress FlateDecode content streams from a PDF for text assertions.
+
+    fpdf2 zlib-compresses page streams, so raw PDF bytes don't contain the
+    literal strings. This walks each FlateDecode stream and returns the
+    concatenated decompressed content, which holds the text operators like
+    ``(Trade Thesis) Tj``.
+    """
+    pattern = re.compile(
+        rb"/Filter /FlateDecode.*?stream\n(.*?)\nendstream",
+        re.DOTALL,
+    )
+    chunks: list[bytes] = []
+    for match in pattern.finditer(pdf_bytes):
+        try:
+            chunks.append(zlib.decompress(match.group(1)))
+        except zlib.error:
+            continue
+    return b"\n".join(chunks)
 
 
 def _intent(tickers: list[str] | None = None) -> Intent:
@@ -104,3 +129,43 @@ class TestReportExporterJson:
         path = exporter.save_json(_intent(), _analysis(with_thesis=False), "Response")
         data = json.loads(path.read_text())
         assert "trade_thesis" not in data
+
+
+class TestReportExporterPdf:
+    def test_save_basic(self, tmp_path) -> None:
+        pytest.importorskip("fpdf")
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(), "Analysis text here.")
+        assert path.exists()
+        assert path.suffix == ".pdf"
+        # Minimum PDF signature check.
+        assert path.read_bytes().startswith(b"%PDF-")
+
+    def test_save_with_thesis(self, tmp_path) -> None:
+        pytest.importorskip("fpdf")
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(with_thesis=True), "Response")
+        text = _extract_pdf_text(path.read_bytes())
+        assert b"Trade Thesis" in text
+        assert b"AAPL" in text
+        assert b"Q2 2026" in text
+        assert b"8/10" in text
+
+    def test_save_data_sources_only_successful(self, tmp_path) -> None:
+        pytest.importorskip("fpdf")
+        exporter = ReportExporter(tmp_path)
+        path = exporter.save_pdf(_intent(), _analysis(), "Response")
+        text = _extract_pdf_text(path.read_bytes())
+        assert b"Data Sources" in text
+        assert b"price_event" in text
+        assert b"news" in text
+        # Failed tool (macro) should be excluded from the data sources list.
+        assert b"macro" not in text
+
+    def test_general_ticker_fallback(self, tmp_path) -> None:
+        pytest.importorskip("fpdf")
+        exporter = ReportExporter(tmp_path)
+        intent = Intent(intent_type=IntentType.MACRO_QUERY, tickers=[], raw_query="inflation?")
+        path = exporter.save_pdf(intent, _analysis(), "Response")
+        assert "general" in path.name
+        assert path.suffix == ".pdf"
