@@ -13,6 +13,7 @@ import time
 from qracer.alert_monitor import AlertMonitor
 from qracer.alerts import AlertCondition
 from qracer.autonomous import AutonomousMonitor
+from qracer.data.providers import StreamingProvider
 from qracer.notifications.providers import Notification, NotificationCategory
 from qracer.notifications.registry import NotificationRegistry
 from qracer.notifications.telegram_poller import BotCommand, TelegramBotPoller
@@ -40,6 +41,7 @@ class Server:
         *,
         autonomous_monitor: AutonomousMonitor | None = None,
         telegram_poller: TelegramBotPoller | None = None,
+        streaming_provider: StreamingProvider | None = None,
         tick_interval: float = 1.0,
     ) -> None:
         self._alert_monitor = alert_monitor
@@ -47,6 +49,9 @@ class Server:
         self._autonomous_monitor = autonomous_monitor
         self._notifications = notifications or NotificationRegistry()
         self._telegram_poller = telegram_poller
+        self._streaming_provider = streaming_provider
+        self._streaming_active = False
+        self._streaming_subscribed: set[str] = set()
         self._tick_interval = tick_interval
         self._shutdown_event = asyncio.Event()
         self._started_at: float | None = None
@@ -56,20 +61,123 @@ class Server:
         logger.info("Server started (tick=%.1fs)", self._tick_interval)
         self._started_at = time.monotonic()
 
-        while not self._shutdown_event.is_set():
-            await self._tick()
-            try:
-                await asyncio.wait_for(
-                    self._shutdown_event.wait(),
-                    timeout=self._tick_interval,
-                )
-            except asyncio.TimeoutError:
-                pass
+        await self._start_streaming()
+
+        try:
+            while not self._shutdown_event.is_set():
+                await self._tick()
+                try:
+                    await asyncio.wait_for(
+                        self._shutdown_event.wait(),
+                        timeout=self._tick_interval,
+                    )
+                except asyncio.TimeoutError:
+                    pass
+        finally:
+            await self._stop_streaming()
 
         logger.info("Server stopped")
 
+    # ------------------------------------------------------------------
+    # Real-time streaming support
+    # ------------------------------------------------------------------
+
+    async def _start_streaming(self) -> None:
+        """Connect the streaming provider and wire up the price callback.
+
+        On failure, the server transparently continues with the existing
+        REST polling path — alerts are still evaluated via ``_tick()``.
+        """
+        if self._streaming_provider is None:
+            return
+
+        provider = self._streaming_provider
+        try:
+            provider.on_price(self._on_realtime_price)
+        except Exception:
+            logger.warning("Failed to register streaming price callback", exc_info=True)
+            return
+
+        try:
+            await provider.connect()
+        except Exception as exc:
+            logger.warning(
+                "Streaming provider connect failed (%s); falling back to REST polling", exc
+            )
+            self._streaming_active = False
+            return
+
+        self._streaming_active = True
+        logger.info("Streaming provider connected; subscribing to active alert tickers")
+        await self._reconcile_streaming_subscriptions()
+
+    async def _stop_streaming(self) -> None:
+        """Disconnect the streaming provider if one is active."""
+        if self._streaming_provider is None or not self._streaming_active:
+            return
+        try:
+            await self._streaming_provider.disconnect()
+        except Exception:
+            logger.debug("Streaming provider disconnect error", exc_info=True)
+        self._streaming_active = False
+        self._streaming_subscribed.clear()
+
+    async def _reconcile_streaming_subscriptions(self) -> None:
+        """Ensure the WS subscription set matches current active alerts."""
+        if not self._streaming_active or self._streaming_provider is None:
+            return
+
+        desired = {a.ticker.upper() for a in self._alert_monitor.store.get_active()}
+        to_add = sorted(desired - self._streaming_subscribed)
+        to_remove = sorted(self._streaming_subscribed - desired)
+
+        if to_add:
+            try:
+                await self._streaming_provider.subscribe(to_add)
+                self._streaming_subscribed.update(to_add)
+            except Exception:
+                logger.debug("Streaming subscribe failed for %s", to_add, exc_info=True)
+
+        if to_remove:
+            try:
+                await self._streaming_provider.unsubscribe(to_remove)
+                self._streaming_subscribed.difference_update(to_remove)
+            except Exception:
+                logger.debug("Streaming unsubscribe failed for %s", to_remove, exc_info=True)
+
+    async def _on_realtime_price(self, ticker: str, price: float) -> None:
+        """Evaluate alerts immediately when a streaming price arrives."""
+        symbol = ticker.upper()
+        try:
+            alerts = self._alert_monitor.store.get_by_ticker(symbol)
+        except Exception:
+            logger.debug("Alert lookup failed for %s", symbol, exc_info=True)
+            return
+
+        for alert in alerts:
+            if not alert.active:
+                continue
+            try:
+                triggered = alert.evaluate(price)
+            except Exception:
+                logger.debug("Alert evaluate failed for %s", alert.id, exc_info=True)
+                continue
+            if not triggered:
+                continue
+
+            self._alert_monitor.store.mark_triggered(alert.id, price)
+            msg = f"Alert triggered: {alert.describe()} (price: {price})"
+            logger.info(msg)
+            await self._notify(NotificationCategory.PRICE_ALERT, msg, msg)
+
     async def _tick(self) -> None:
         """Single heartbeat — check alerts and tasks."""
+        if self._streaming_active:
+            try:
+                await self._reconcile_streaming_subscriptions()
+            except Exception:
+                logger.debug("Streaming reconciliation failed", exc_info=True)
+
         if self._alert_monitor.should_check():
             try:
                 triggered = await self._alert_monitor.check()

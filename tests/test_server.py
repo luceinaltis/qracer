@@ -32,6 +32,21 @@ def _make_poller():
     return poller
 
 
+def _make_streaming_provider(connect_fails: bool = False):
+    """Return a MagicMock mimicking the StreamingProvider protocol."""
+    provider = MagicMock()
+    provider.on_price = MagicMock()
+    provider.on_news = MagicMock()
+    provider.subscribe = AsyncMock(return_value=None)
+    provider.unsubscribe = AsyncMock(return_value=None)
+    provider.disconnect = AsyncMock(return_value=None)
+    if connect_fails:
+        provider.connect = AsyncMock(side_effect=ConnectionError("no network"))
+    else:
+        provider.connect = AsyncMock(return_value=None)
+    return provider
+
+
 class TestServer:
     async def test_tick_checks_alerts_and_tasks(self) -> None:
         monitor = _make_monitor()
@@ -394,6 +409,126 @@ class TestBotCommandHandlers:
             TaskActionType.ANALYZE, {"ticker": "AAPL"}, "every 1h"
         )
         assert "Scheduled task nn" in out
+
+
+class TestServerStreaming:
+    async def test_start_streaming_connects_and_subscribes(self) -> None:
+        monitor = _make_monitor()
+        monitor.store.get_active.return_value = [
+            _alert("a1", "AAPL", 200),
+            _alert("a2", "msft", 410),
+        ]
+        executor = _make_executor()
+        provider = _make_streaming_provider()
+
+        server = Server(monitor, executor, streaming_provider=provider)
+        await server._start_streaming()
+
+        provider.connect.assert_awaited_once()
+        provider.on_price.assert_called_once()
+        provider.subscribe.assert_awaited_once()
+        args, _ = provider.subscribe.await_args
+        assert sorted(args[0]) == ["AAPL", "MSFT"]
+        assert server._streaming_active is True
+
+    async def test_start_streaming_connect_failure_fallback(self) -> None:
+        monitor = _make_monitor()
+        monitor.store.get_active.return_value = []
+        executor = _make_executor()
+        provider = _make_streaming_provider(connect_fails=True)
+
+        server = Server(monitor, executor, streaming_provider=provider)
+        await server._start_streaming()  # must not raise
+
+        assert server._streaming_active is False
+        provider.subscribe.assert_not_called()
+
+    async def test_realtime_price_triggers_alert(self) -> None:
+        triggered_alert = _alert("a1", "AAPL", 200)
+        monitor = _make_monitor()
+        monitor.store.get_by_ticker.return_value = [triggered_alert]
+
+        executor = _make_executor()
+        notifications = MagicMock()
+        notifications.channels = ["telegram"]
+        notifications.notify = AsyncMock(return_value={"telegram": True})
+
+        server = Server(monitor, executor, notifications)
+
+        await server._on_realtime_price("AAPL", 205.0)
+
+        monitor.store.mark_triggered.assert_called_once()
+        notifications.notify.assert_called_once()
+        notification = notifications.notify.call_args[0][0]
+        assert "AAPL" in notification.title
+
+    async def test_realtime_price_no_trigger_when_below_threshold(self) -> None:
+        non_triggering = _alert("a1", "AAPL", 200)
+        monitor = _make_monitor()
+        monitor.store.get_by_ticker.return_value = [non_triggering]
+
+        executor = _make_executor()
+        server = Server(monitor, executor)
+
+        await server._on_realtime_price("AAPL", 150.0)
+        monitor.store.mark_triggered.assert_not_called()
+
+    async def test_realtime_price_skips_inactive_alerts(self) -> None:
+        inactive = _alert("a1", "AAPL", 200, active=False)
+        monitor = _make_monitor()
+        monitor.store.get_by_ticker.return_value = [inactive]
+
+        executor = _make_executor()
+        server = Server(monitor, executor)
+
+        await server._on_realtime_price("AAPL", 250.0)
+        monitor.store.mark_triggered.assert_not_called()
+
+    async def test_tick_reconciles_streaming_subscriptions(self) -> None:
+        monitor = _make_monitor()
+        monitor.store.get_active.return_value = [_alert("a1", "TSLA", 250)]
+        executor = _make_executor()
+        provider = _make_streaming_provider()
+
+        server = Server(monitor, executor, streaming_provider=provider)
+        await server._start_streaming()
+        provider.subscribe.reset_mock()
+
+        # New alert added — reconcile should subscribe to the new ticker.
+        monitor.store.get_active.return_value = [
+            _alert("a1", "TSLA", 250),
+            _alert("a2", "NVDA", 900),
+        ]
+        await server._tick()
+
+        provider.subscribe.assert_awaited()
+        new_symbols = provider.subscribe.await_args[0][0]
+        assert "NVDA" in new_symbols
+        assert "TSLA" not in new_symbols  # already subscribed
+
+    async def test_stop_streaming_disconnects(self) -> None:
+        monitor = _make_monitor()
+        monitor.store.get_active.return_value = []
+        executor = _make_executor()
+        provider = _make_streaming_provider()
+
+        server = Server(monitor, executor, streaming_provider=provider)
+        await server._start_streaming()
+        await server._stop_streaming()
+
+        provider.disconnect.assert_awaited_once()
+        assert server._streaming_active is False
+
+    async def test_stop_streaming_noop_when_inactive(self) -> None:
+        monitor = _make_monitor()
+        executor = _make_executor()
+        provider = _make_streaming_provider(connect_fails=True)
+
+        server = Server(monitor, executor, streaming_provider=provider)
+        await server._start_streaming()  # connect fails, stays inactive
+        await server._stop_streaming()
+
+        provider.disconnect.assert_not_called()
 
 
 class TestFormatDuration:

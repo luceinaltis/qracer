@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 import click
 
 if TYPE_CHECKING:
+    from qracer.config.models import QracerConfig
+    from qracer.data.providers import StreamingProvider
     from qracer.data.registry import DataRegistry
     from qracer.llm.registry import LLMRegistry
 
@@ -344,6 +346,37 @@ def _build_registries() -> tuple[LLMRegistry, DataRegistry, list[str]]:
                 logger.warning("LLM provider '%s' unavailable: %s", name, exc)
 
     return llm_registry, data_registry, warnings
+
+
+def _build_streaming_provider(config: QracerConfig) -> StreamingProvider | None:
+    """Build an optional real-time streaming adapter from providers config.
+
+    Returns ``None`` if the ``finnhub`` provider is disabled, the API key is
+    missing, or the ``qracer[streaming]`` extra is not installed.  Connection
+    failures are handled by the Server loop, which transparently falls back
+    to REST polling.
+    """
+    prov_cfg = config.providers.providers.get("finnhub")
+    if prov_cfg is None or not prov_cfg.enabled:
+        return None
+    if not prov_cfg.api_key_env:
+        return None
+
+    api_key = config.credentials.get(prov_cfg.api_key_env) or os.environ.get(prov_cfg.api_key_env)
+    if not api_key:
+        return None
+
+    try:
+        from qracer.data.finnhub_ws import FinnhubWebSocketAdapter
+    except ImportError as exc:
+        logger.warning("Streaming unavailable: %s", exc)
+        return None
+
+    try:
+        return FinnhubWebSocketAdapter(api_key=api_key)
+    except (ImportError, ValueError) as exc:
+        logger.warning("Streaming unavailable: %s", exc)
+        return None
 
 
 _HELP_TEXT = """\
@@ -1059,12 +1092,15 @@ def serve(check_interval: int) -> None:
             cooldown_minutes=app_cfg.alert_cooldown_minutes,
         )
 
+    streaming_provider = _build_streaming_provider(config)
+
     server = Server(
         alert_monitor,
         task_executor,
         notifications,
         autonomous_monitor=autonomous_monitor,
         telegram_poller=telegram_poller,
+        streaming_provider=streaming_provider,
         tick_interval=1.0,
     )
 
@@ -1086,6 +1122,8 @@ def serve(check_interval: int) -> None:
         )
     if telegram_poller is not None:
         click.echo("  Telegram bot: receiving commands (try /help in chat)")
+    if streaming_provider is not None:
+        click.echo("  Streaming: Finnhub WebSocket enabled (falls back to REST on failure)")
     click.echo("  Press Ctrl+C to stop.\n")
 
     try:
