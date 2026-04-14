@@ -935,3 +935,200 @@ class TestFactExtraction:
             response = await engine.query("AAPL price")
 
         assert response.text  # Should produce a response without crashing
+
+
+# ---------------------------------------------------------------------------
+# SessionDigest persistence on compaction
+# ---------------------------------------------------------------------------
+
+
+class TestSessionDigestPersistence:
+    async def test_digest_saved_on_compaction(self, tmp_path) -> None:
+        """Compaction should write a SessionDigest capturing the session's
+        cumulative tickers, intent types, thesis ids, and turn count."""
+        from qracer.memory.fact_store import FactStore
+        from qracer.memory.session_compactor import CompactionResult
+        from qracer.memory.session_logger import SessionLogger, TurnRecord
+
+        session_logger = SessionLogger(tmp_path / "sessions" / "sess_digest_01.jsonl")
+        session_logger.append(TurnRecord(turn=1, role="user", content="AAPL price"))
+
+        fact_store = FactStore()
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: json.dumps({"intent": "price_check", "tickers": ["AAPL"]}),
+                Role.STRATEGIST: "Response",
+            }
+        )
+        engine = ConversationEngine(
+            llm, DataRegistry(), session_logger=session_logger, fact_store=fact_store
+        )
+
+        # Force compaction path and stub the compactor result.
+        assert engine._compactor is not None
+        engine._compactor.needs_compaction = lambda _: True  # type: ignore[method-assign]
+        engine._compactor.compact = AsyncMock(  # type: ignore[method-assign]
+            return_value=CompactionResult(
+                summary="# Summary\n- AAPL price_check",
+                turn_count=2,
+                input_tokens=10,
+                output_tokens=5,
+                cost=0.0,
+            )
+        )
+
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
+            mock_invoke.return_value = [_ok_result("price_event")]
+            await engine.query("AAPL price")
+
+        digests = fact_store.get_sessions_for_ticker("AAPL")
+        assert len(digests) == 1
+        d = digests[0]
+        assert d.session_id == "sess_digest_01"
+        assert d.tickers_discussed == ["AAPL"]
+        assert d.intent_types_used == ["price_check"]
+        assert d.thesis_ids == []  # No TradeThesis produced on quickpath
+        assert d.turn_count == 2
+        assert "AAPL" in d.key_conclusions
+
+        fact_store.close()
+
+    async def test_digest_accumulates_across_queries(self, tmp_path) -> None:
+        """Multiple queries before compaction should produce a digest with
+        the union of their tickers and intent types."""
+        from qracer.memory.fact_store import FactStore
+        from qracer.memory.session_compactor import CompactionResult
+        from qracer.memory.session_logger import SessionLogger
+
+        session_logger = SessionLogger(tmp_path / "sessions" / "sess_digest_02.jsonl")
+        fact_store = FactStore()
+
+        # Two queries, different tickers and intent types. Compaction only
+        # fires on the second call.
+        intents = iter(
+            [
+                json.dumps({"intent": "price_check", "tickers": ["AAPL"]}),
+                json.dumps({"intent": "deep_dive", "tickers": ["MSFT"]}),
+            ]
+        )
+
+        class _StreamLLM:
+            def __init__(self, inner: LLMRegistry) -> None:
+                self._inner = inner
+
+            def __getattr__(self, name):  # type: ignore[no-untyped-def]
+                return getattr(self._inner, name)
+
+        base = _mock_llm_registry({Role.RESEARCHER: "", Role.STRATEGIST: "Resp"})
+
+        async def fake_researcher_complete(req):  # type: ignore[no-untyped-def]
+            from qracer.llm.providers import CompletionResponse
+
+            return CompletionResponse(
+                content=next(intents), input_tokens=1, output_tokens=1, cost=0.0
+            )
+
+        base.get(Role.RESEARCHER).complete = fake_researcher_complete  # type: ignore[method-assign]
+
+        engine = ConversationEngine(
+            base, DataRegistry(), session_logger=session_logger, fact_store=fact_store
+        )
+
+        assert engine._compactor is not None
+        # Compact only on the second query.
+        needs = iter([False, True])
+        engine._compactor.needs_compaction = lambda _: next(needs)  # type: ignore[method-assign]
+        engine._compactor.compact = AsyncMock(  # type: ignore[method-assign]
+            return_value=CompactionResult(
+                summary="summary", turn_count=4, input_tokens=1, output_tokens=1, cost=0.0
+            )
+        )
+
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
+            mock_invoke.return_value = [_ok_result("price_event")]
+            await engine.query("AAPL price")
+            await engine.query("MSFT deep dive")
+
+        # Both tickers should be in the digest after the second compaction.
+        aapl = fact_store.get_sessions_for_ticker("AAPL")
+        msft = fact_store.get_sessions_for_ticker("MSFT")
+        assert len(aapl) == 1
+        assert aapl[0].session_id == "sess_digest_02"
+        assert set(aapl[0].tickers_discussed) == {"AAPL", "MSFT"}
+        assert set(aapl[0].intent_types_used) == {"price_check", "deep_dive"}
+        assert len(msft) == 1
+        assert msft[0].session_id == aapl[0].session_id
+
+        fact_store.close()
+
+    async def test_digest_upserts_on_repeated_compactions(self, tmp_path) -> None:
+        """Two compactions in the same session should leave a single digest
+        row reflecting the latest turn_count and summary."""
+        from qracer.memory.fact_store import FactStore
+        from qracer.memory.session_compactor import CompactionResult
+        from qracer.memory.session_logger import SessionLogger
+
+        session_logger = SessionLogger(tmp_path / "sessions" / "sess_digest_03.jsonl")
+        fact_store = FactStore()
+
+        llm = _mock_llm_registry(
+            {
+                Role.RESEARCHER: json.dumps({"intent": "price_check", "tickers": ["AAPL"]}),
+                Role.STRATEGIST: "R",
+            }
+        )
+        engine = ConversationEngine(
+            llm, DataRegistry(), session_logger=session_logger, fact_store=fact_store
+        )
+
+        assert engine._compactor is not None
+        engine._compactor.needs_compaction = lambda _: True  # type: ignore[method-assign]
+        results = iter(
+            [
+                CompactionResult(
+                    summary="first", turn_count=2, input_tokens=1, output_tokens=1, cost=0.0
+                ),
+                CompactionResult(
+                    summary="second", turn_count=4, input_tokens=1, output_tokens=1, cost=0.0
+                ),
+            ]
+        )
+
+        async def fake_compact(_):  # type: ignore[no-untyped-def]
+            return next(results)
+
+        engine._compactor.compact = fake_compact  # type: ignore[method-assign]
+
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
+            mock_invoke.return_value = [_ok_result("price_event")]
+            await engine.query("AAPL price 1")
+            await engine.query("AAPL price 2")
+
+        digests = fact_store.get_sessions_for_ticker("AAPL")
+        assert len(digests) == 1
+        assert digests[0].turn_count == 4
+        assert digests[0].key_conclusions == "second"
+
+        fact_store.close()
+
+    async def test_no_digest_without_fact_store(self, tmp_path) -> None:
+        """With no fact_store, compaction should not attempt digest persistence."""
+        from qracer.memory.session_compactor import CompactionResult
+        from qracer.memory.session_logger import SessionLogger, TurnRecord
+
+        session_logger = SessionLogger(tmp_path / "sessions" / "no_store.jsonl")
+        session_logger.append(TurnRecord(turn=1, role="user", content="hi"))
+
+        llm = _mock_llm_registry({Role.RESEARCHER: "", Role.ANALYST: "", Role.STRATEGIST: ""})
+        engine = ConversationEngine(llm, DataRegistry(), session_logger=session_logger)
+        assert engine._compactor is not None
+        engine._compactor.needs_compaction = lambda _: True  # type: ignore[method-assign]
+        engine._compactor.compact = AsyncMock(  # type: ignore[method-assign]
+            return_value=CompactionResult(
+                summary="x", turn_count=1, input_tokens=1, output_tokens=1, cost=0.0
+            )
+        )
+
+        # Should not raise — fact_store is None, digest persistence is skipped.
+        await engine._maybe_compact()
