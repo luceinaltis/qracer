@@ -14,6 +14,7 @@ from qracer.alerts import Alert, AlertStore
 from qracer.conversation.intent import Intent, IntentType
 from qracer.data.providers import PriceProvider
 from qracer.data.registry import DataRegistry
+from qracer.memory.fact_store import FactStore
 from qracer.models import ToolResult
 from qracer.risk.models import PortfolioSnapshot
 from qracer.tasks import TaskStore
@@ -214,6 +215,7 @@ async def generate_briefing(
     task_store: TaskStore,
     sessions_dir: Path,
     current_session: Path | None = None,
+    fact_store: FactStore | None = None,
 ) -> str | None:
     """Generate a session-start briefing.
 
@@ -266,6 +268,15 @@ async def generate_briefing(
         lines.append("")
         has_content = True
 
+    # Open theses from fact store
+    if fact_store is not None:
+        thesis_lines = _briefing_thesis_lines(fact_store)
+        if thesis_lines:
+            lines.append(f"Open Theses ({len(thesis_lines)}):")
+            lines.extend(thesis_lines)
+            lines.append("")
+            has_content = True
+
     if not has_content:
         return None
 
@@ -273,6 +284,26 @@ async def generate_briefing(
     while lines and lines[-1] == "":
         lines.pop()
     return "\n".join(lines)
+
+
+def _briefing_thesis_lines(fact_store: FactStore) -> list[str]:
+    """Format open theses for the session-start briefing."""
+    upcoming = fact_store.get_upcoming_catalysts(days_ahead=14)
+    if not upcoming:
+        upcoming = fact_store.get_open_theses()[:5]
+    lines: list[str] = []
+    for t in upcoming:
+        entry_mid = (t.entry_zone_low + t.entry_zone_high) / 2
+        direction = "LONG" if t.target_price > entry_mid else "SHORT"
+        line = (
+            f"  {direction} {t.ticker}: conviction {t.conviction}/10, target ${t.target_price:.2f}"
+        )
+        if t.catalyst:
+            line += f", catalyst: {t.catalyst}"
+            if t.catalyst_date:
+                line += f" ({t.catalyst_date})"
+        lines.append(line)
+    return lines
 
 
 def _find_last_session(

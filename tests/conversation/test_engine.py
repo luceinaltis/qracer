@@ -836,3 +836,102 @@ class TestCompactionPersistence:
 
         engine._compactor.compact.assert_awaited_once()
         engine._compactor.compact_and_save.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Structured fact persistence (FactStore integration)
+# ---------------------------------------------------------------------------
+
+
+class TestFactExtraction:
+    async def test_thesis_persisted_after_query(self) -> None:
+        """When the standard handler produces a TradeThesis, it should be
+        persisted to the fact store automatically."""
+        from qracer.memory.fact_store import FactStore
+        from qracer.models.base import TradeThesis
+
+        intent_resp = json.dumps({"intent": "event_analysis", "tickers": ["AAPL"]})
+        llm = _mock_llm_registry({Role.RESEARCHER: intent_resp, Role.STRATEGIST: "Response"})
+
+        fact_store = FactStore()  # in-memory
+        engine = ConversationEngine(llm, DataRegistry(), fact_store=fact_store)
+
+        thesis = TradeThesis(
+            ticker="AAPL",
+            entry_zone=(170.0, 175.0),
+            target_price=200.0,
+            stop_loss=160.0,
+            risk_reward_ratio=2.4,
+            catalyst="AI revenue",
+            catalyst_date="Q2 2026",
+            conviction=8,
+            summary="Long AAPL on AI",
+        )
+
+        # Patch handlers to return an analysis with a trade thesis.
+        analysis = AnalysisResult(
+            results=[_ok_result("price_event")],
+            confidence=0.9,
+            iterations=1,
+            trade_thesis=thesis,
+        )
+        with patch.object(engine._standard_handler, "handle", new=AsyncMock()) as mock_handle:
+            from qracer.conversation.handlers import HandlerResult
+
+            mock_handle.return_value = HandlerResult(text="Response", analysis=analysis)
+            await engine.query("Analyze AAPL")
+
+        open_theses = fact_store.get_open_theses(["AAPL"])
+        assert len(open_theses) == 1
+        assert open_theses[0].ticker == "AAPL"
+        assert open_theses[0].conviction == 8
+        assert open_theses[0].target_price == 200.0
+
+        fact_store.close()
+
+    async def test_supersession_on_second_analysis(self) -> None:
+        """A second thesis for the same ticker should supersede the first."""
+        from qracer.memory.fact_store import FactStore
+        from qracer.models.base import TradeThesis
+
+        fact_store = FactStore()
+        intent_resp = json.dumps({"intent": "event_analysis", "tickers": ["AAPL"]})
+        llm = _mock_llm_registry({Role.RESEARCHER: intent_resp, Role.STRATEGIST: "R"})
+        engine = ConversationEngine(llm, DataRegistry(), fact_store=fact_store)
+
+        for target in (200.0, 220.0):
+            thesis = TradeThesis(
+                ticker="AAPL",
+                entry_zone=(170.0, 175.0),
+                target_price=target,
+                stop_loss=160.0,
+                risk_reward_ratio=2.0,
+                catalyst="AI",
+                catalyst_date=None,
+                conviction=8,
+                summary="thesis",
+            )
+            analysis = AnalysisResult(results=[], confidence=0.9, iterations=1, trade_thesis=thesis)
+            with patch.object(engine._standard_handler, "handle", new=AsyncMock()) as mh:
+                from qracer.conversation.handlers import HandlerResult
+
+                mh.return_value = HandlerResult(text="R", analysis=analysis)
+                await engine.query("AAPL")
+
+        open_theses = fact_store.get_open_theses(["AAPL"])
+        assert len(open_theses) == 1
+        assert open_theses[0].target_price == 220.0
+
+        fact_store.close()
+
+    async def test_no_crash_without_fact_store(self) -> None:
+        """Engine without a fact_store should work normally."""
+        intent_resp = json.dumps({"intent": "price_check", "tickers": ["AAPL"]})
+        llm = _mock_llm_registry({Role.RESEARCHER: intent_resp})
+        engine = ConversationEngine(llm, DataRegistry())
+
+        with patch("qracer.conversation.handlers.invoke_tools") as mock_invoke:
+            mock_invoke.return_value = [_ok_result("price_event")]
+            response = await engine.query("AAPL price")
+
+        assert response.text  # Should produce a response without crashing

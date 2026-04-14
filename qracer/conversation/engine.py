@@ -35,6 +35,7 @@ from qracer.conversation.report_exporter import ReportExporter
 from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynthesizer
 from qracer.data.registry import DataRegistry
 from qracer.llm.registry import LLMRegistry
+from qracer.memory.fact_store import FactStore
 from qracer.memory.memory_searcher import MemorySearcher
 from qracer.memory.session_compactor import SessionCompactor
 from qracer.memory.session_logger import SessionLogger, TurnRecord
@@ -71,6 +72,7 @@ class ConversationEngine:
         memory_searcher: MemorySearcher | None = None,
         language: str = "en",
         summaries_dir: Path | None = None,
+        fact_store: FactStore | None = None,
     ) -> None:
         self._llm = llm_registry
         self._data = data_registry
@@ -79,6 +81,7 @@ class ConversationEngine:
         self._memory_searcher = memory_searcher
         self._language = language
         self._summaries_dir = summaries_dir
+        self._fact_store = fact_store
 
         analysis_loop = AnalysisLoop(
             llm_registry,
@@ -94,7 +97,7 @@ class ConversationEngine:
             data_registry, self._portfolio_config, language=language
         )
         self._quickpath_handler = QuickPathHandler(
-            data_registry, memory_searcher, language=language
+            data_registry, memory_searcher, language=language, fact_store=fact_store
         )
         self._comparison_handler = ComparisonHandler(
             data_registry, comparison_synthesizer, memory_searcher
@@ -106,10 +109,12 @@ class ConversationEngine:
             synthesizer,
             self._portfolio_config,
             memory_searcher,
+            fact_store=fact_store,
         )
 
         self._history: list[dict] = []
         self._session_logger = session_logger
+        self._session_id = session_logger.path.stem if session_logger else "unknown"
         self._compactor = SessionCompactor(llm_registry) if session_logger else None
         self._report_exporter = ReportExporter(report_dir) if report_dir else None
         self._context: ConversationContext = ConversationContext()
@@ -145,7 +150,10 @@ class ConversationEngine:
             data_registry, self._portfolio_config, language=lang
         )
         self._quickpath_handler = QuickPathHandler(
-            data_registry, self._memory_searcher, language=lang
+            data_registry,
+            self._memory_searcher,
+            language=lang,
+            fact_store=self._fact_store,
         )
         self._comparison_handler = ComparisonHandler(
             data_registry, comparison_synthesizer, self._memory_searcher
@@ -157,6 +165,7 @@ class ConversationEngine:
             synthesizer,
             self._portfolio_config,
             self._memory_searcher,
+            fact_store=self._fact_store,
         )
         self._config_version += 1
 
@@ -316,4 +325,14 @@ class ConversationEngine:
 
         response = EngineResponse(text=result.text, intent=intent, analysis=result.analysis)
         self._last_response = response
+        self._persist_facts(result.analysis)
         return response
+
+    def _persist_facts(self, analysis: AnalysisResult) -> None:
+        """Extract and persist structured facts from analysis results."""
+        if self._fact_store is None or analysis.trade_thesis is None:
+            return
+        try:
+            self._fact_store.save_thesis(analysis.trade_thesis, self._session_id)
+        except Exception:
+            logger.warning("Failed to persist thesis to fact store", exc_info=True)

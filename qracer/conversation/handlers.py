@@ -19,6 +19,8 @@ from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynth
 from qracer.data.providers import PriceProvider
 from qracer.data.registry import DataRegistry
 from qracer.llm.registry import LLMRegistry
+from qracer.memory.fact_models import PersistedThesis
+from qracer.memory.fact_store import FactStore
 from qracer.memory.memory_searcher import MemorySearcher
 from qracer.models import ToolResult, TradeThesis
 from qracer.risk.calculator import RiskCalculator
@@ -92,16 +94,24 @@ class QuickPathHandler:
         memory_searcher: MemorySearcher | None = None,
         *,
         language: str = "en",
+        fact_store: FactStore | None = None,
     ) -> None:
         self._data = data_registry
         self._memory_searcher = memory_searcher
         self._language = language
+        self._fact_store = fact_store
 
     async def handle(self, intent: Intent) -> HandlerResult:
         results = await invoke_tools(
             intent.tools, intent, self._data, memory_searcher=self._memory_searcher
         )
         text = format_quickpath(intent, results, language=self._language)
+
+        if self._fact_store is not None and intent.tickers:
+            open_theses = self._fact_store.get_open_theses(intent.tickers)
+            if open_theses:
+                text += "\n\n" + _format_thesis_reminder(open_theses[0])
+
         return HandlerResult(
             text=text, analysis=AnalysisResult(results=results, confidence=1.0, iterations=0)
         )
@@ -154,6 +164,8 @@ class StandardHandler:
         synthesizer: ResponseSynthesizer,
         portfolio_config: PortfolioConfig,
         memory_searcher: MemorySearcher | None = None,
+        *,
+        fact_store: FactStore | None = None,
     ) -> None:
         self._data = data_registry
         self._llm = llm_registry
@@ -161,12 +173,26 @@ class StandardHandler:
         self._synthesizer = synthesizer
         self._portfolio_config = portfolio_config
         self._memory_searcher = memory_searcher
+        self._fact_store = fact_store
 
     async def handle(self, intent: Intent) -> HandlerResult:
         # Invoke initial pipeline tools.
         initial_results = await invoke_tools(
             intent.tools, intent, self._data, memory_searcher=self._memory_searcher
         )
+
+        # Inject open theses from fact store as prior evidence.
+        if self._fact_store is not None and intent.tickers:
+            open_theses = self._fact_store.get_open_theses(intent.tickers)
+            if open_theses:
+                initial_results.append(
+                    ToolResult(
+                        tool="prior_thesis",
+                        success=True,
+                        data={"theses": [_thesis_to_dict(t) for t in open_theses]},
+                        source="FactStore",
+                    )
+                )
 
         # Run analysis loop.
         analysis = await self._analysis_loop.run(intent, initial_results)
@@ -234,3 +260,36 @@ def _format_rebalance_suggestions(suggestions: list[RebalanceAction]) -> str:
         else:
             lines.append(f"  ADD {s.ticker} — {s.reason}")
     return "\n".join(lines)
+
+
+def _thesis_to_dict(t: PersistedThesis) -> dict:
+    """Convert a PersistedThesis to a dict for ToolResult.data."""
+    return {
+        "ticker": t.ticker,
+        "entry_zone": [t.entry_zone_low, t.entry_zone_high],
+        "target_price": t.target_price,
+        "stop_loss": t.stop_loss,
+        "risk_reward_ratio": t.risk_reward_ratio,
+        "catalyst": t.catalyst,
+        "catalyst_date": t.catalyst_date,
+        "conviction": t.conviction,
+        "status": t.status.value,
+        "session_id": t.session_id,
+    }
+
+
+def _format_thesis_reminder(t: PersistedThesis) -> str:
+    """One-line reminder of an active thesis for QuickPath output."""
+    entry_mid = (t.entry_zone_low + t.entry_zone_high) / 2
+    direction = "LONG" if t.target_price > entry_mid else "SHORT"
+    line = (
+        f"  Active thesis: {direction} {t.ticker} "
+        f"(conviction {t.conviction}/10, "
+        f"target ${t.target_price:.2f}, stop ${t.stop_loss:.2f}"
+    )
+    if t.catalyst:
+        line += f", catalyst: {t.catalyst}"
+        if t.catalyst_date:
+            line += f" ({t.catalyst_date})"
+    line += ")"
+    return line

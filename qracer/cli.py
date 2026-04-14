@@ -384,6 +384,7 @@ async def _repl_loop(
     data_registry: object | None = None,
     sessions_dir: Path | None = None,
     current_session: Path | None = None,
+    fact_store: object | None = None,
 ) -> None:
     """Run the interactive read-eval-print loop."""
     from qracer.alert_monitor import AlertMonitor
@@ -412,6 +413,7 @@ async def _repl_loop(
                 executor.store,
                 sessions_dir,
                 current_session=current_session,
+                fact_store=fact_store,  # type: ignore[arg-type]
             )
         except Exception:
             logger.debug("Session briefing generation failed", exc_info=True)
@@ -946,6 +948,13 @@ def repl() -> None:
     if loaded_contexts:
         click.echo(f"  ✓ Loaded {loaded_contexts} past session summaries from {summaries_dir}")
 
+    from qracer.memory.fact_store import FactStore
+
+    fact_store = FactStore(_user_dir() / "fact_store.duckdb")
+    open_theses = fact_store.get_open_theses()
+    if open_theses:
+        click.echo(f"  ✓ Loaded {len(open_theses)} open theses from fact store")
+
     reports_dir = _user_dir() / "reports"
     watchlist = Watchlist(_user_dir() / "watchlist.json")
 
@@ -969,6 +978,7 @@ def repl() -> None:
         language=app_cfg.language,
         memory_searcher=memory_searcher,
         summaries_dir=summaries_dir,
+        fact_store=fact_store,
     )
 
     task_executor = TaskExecutor(task_store, data_registry, llm_registry, engine=engine)
@@ -982,6 +992,7 @@ def repl() -> None:
             data_registry=data_registry,
             sessions_dir=sessions_dir,
             current_session=session_logger.path,
+            fact_store=fact_store,
         )
     )
 
