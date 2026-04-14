@@ -1026,7 +1026,11 @@ class TestSessionDigestPersistence:
             from qracer.llm.providers import CompletionResponse
 
             return CompletionResponse(
-                content=next(intents), input_tokens=1, output_tokens=1, cost=0.0
+                content=next(intents),
+                model="stub",
+                input_tokens=1,
+                output_tokens=1,
+                cost=0.0,
             )
 
         base.get(Role.RESEARCHER).complete = fake_researcher_complete  # type: ignore[method-assign]

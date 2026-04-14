@@ -303,9 +303,7 @@ class FactStore:
             ],
         )
 
-    def get_sessions_for_ticker(
-        self, ticker: str, limit: int = 20
-    ) -> list[SessionDigest]:
+    def get_sessions_for_ticker(self, ticker: str, limit: int = 20) -> list[SessionDigest]:
         """Return session digests whose ``tickers_discussed`` contains *ticker*.
 
         Results are ordered by ``created_at`` descending (most recent first).

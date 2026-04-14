@@ -237,9 +237,7 @@ class TestSessionDigestCRUD:
         assert result[0].key_conclusions == "v2"
         assert result[0].tickers_discussed == ["AAPL", "MSFT"]
 
-    def test_get_sessions_for_ticker_filters_by_membership(
-        self, fact_store: FactStore
-    ) -> None:
+    def test_get_sessions_for_ticker_filters_by_membership(self, fact_store: FactStore) -> None:
         fact_store.save_digest(_make_digest(session_id="s1", tickers_discussed=["AAPL"]))
         fact_store.save_digest(_make_digest(session_id="s2", tickers_discussed=["MSFT"]))
         fact_store.save_digest(_make_digest(session_id="s3", tickers_discussed=["AAPL", "NVDA"]))
