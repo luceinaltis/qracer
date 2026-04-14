@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from qracer.memory.fact_models import ThesisStatus
+from qracer.memory.fact_models import SessionDigest, ThesisStatus
 from qracer.memory.fact_store import FactStore, _parse_catalyst_date
 from qracer.models.base import TradeThesis
 
@@ -170,6 +170,131 @@ class TestCatalystDateParsing:
         upcoming = fact_store.get_upcoming_catalysts(days_ahead=14)
         assert len(upcoming) == 1
         assert upcoming[0].ticker == "NEAR"
+
+
+# ---------------------------------------------------------------------------
+# SessionDigest CRUD
+# ---------------------------------------------------------------------------
+
+
+def _make_digest(
+    session_id: str = "sess_001",
+    tickers_discussed: list[str] | None = None,
+    intent_types_used: list[str] | None = None,
+    thesis_ids: list[int] | None = None,
+    key_conclusions: str = "Bullish on AAPL on AI revenue",
+    turn_count: int = 6,
+    created_at: datetime | None = None,
+) -> SessionDigest:
+    return SessionDigest(
+        session_id=session_id,
+        tickers_discussed=tickers_discussed if tickers_discussed is not None else ["AAPL"],
+        intent_types_used=(
+            intent_types_used if intent_types_used is not None else ["event_analysis"]
+        ),
+        thesis_ids=thesis_ids if thesis_ids is not None else [],
+        key_conclusions=key_conclusions,
+        turn_count=turn_count,
+        created_at=created_at if created_at is not None else datetime.now(),
+    )
+
+
+class TestSessionDigestCRUD:
+    def test_save_and_retrieve_by_ticker(self, fact_store: FactStore) -> None:
+        digest = _make_digest(
+            tickers_discussed=["AAPL", "MSFT"],
+            intent_types_used=["deep_dive", "price_check"],
+            thesis_ids=[1, 2],
+        )
+        fact_store.save_digest(digest)
+
+        result = fact_store.get_sessions_for_ticker("AAPL")
+        assert len(result) == 1
+        d = result[0]
+        assert d.session_id == "sess_001"
+        assert d.tickers_discussed == ["AAPL", "MSFT"]
+        assert d.intent_types_used == ["deep_dive", "price_check"]
+        assert d.thesis_ids == [1, 2]
+        assert d.key_conclusions == "Bullish on AAPL on AI revenue"
+        assert d.turn_count == 6
+
+    def test_upsert_overwrites_existing_session(self, fact_store: FactStore) -> None:
+        """save_digest should replace the prior digest for the same session_id."""
+        fact_store.save_digest(
+            _make_digest(tickers_discussed=["AAPL"], turn_count=4, key_conclusions="v1")
+        )
+        fact_store.save_digest(
+            _make_digest(
+                tickers_discussed=["AAPL", "MSFT"],
+                turn_count=10,
+                key_conclusions="v2",
+            )
+        )
+
+        result = fact_store.get_sessions_for_ticker("AAPL")
+        assert len(result) == 1
+        assert result[0].turn_count == 10
+        assert result[0].key_conclusions == "v2"
+        assert result[0].tickers_discussed == ["AAPL", "MSFT"]
+
+    def test_get_sessions_for_ticker_filters_by_membership(self, fact_store: FactStore) -> None:
+        fact_store.save_digest(_make_digest(session_id="s1", tickers_discussed=["AAPL"]))
+        fact_store.save_digest(_make_digest(session_id="s2", tickers_discussed=["MSFT"]))
+        fact_store.save_digest(_make_digest(session_id="s3", tickers_discussed=["AAPL", "NVDA"]))
+
+        aapl_sessions = {d.session_id for d in fact_store.get_sessions_for_ticker("AAPL")}
+        assert aapl_sessions == {"s1", "s3"}
+
+        msft_sessions = {d.session_id for d in fact_store.get_sessions_for_ticker("MSFT")}
+        assert msft_sessions == {"s2"}
+
+    def test_get_sessions_for_ticker_ordered_desc(self, fact_store: FactStore) -> None:
+        older = datetime(2026, 1, 1, 10, 0, 0)
+        newer = datetime(2026, 2, 1, 10, 0, 0)
+        fact_store.save_digest(
+            _make_digest(session_id="older", tickers_discussed=["AAPL"], created_at=older)
+        )
+        fact_store.save_digest(
+            _make_digest(session_id="newer", tickers_discussed=["AAPL"], created_at=newer)
+        )
+
+        result = fact_store.get_sessions_for_ticker("AAPL")
+        assert [d.session_id for d in result] == ["newer", "older"]
+
+    def test_get_sessions_for_ticker_respects_limit(self, fact_store: FactStore) -> None:
+        for i in range(5):
+            fact_store.save_digest(
+                _make_digest(
+                    session_id=f"s{i}",
+                    tickers_discussed=["AAPL"],
+                    created_at=datetime(2026, 1, 1, 10, i, 0),
+                )
+            )
+
+        assert len(fact_store.get_sessions_for_ticker("AAPL", limit=2)) == 2
+
+    def test_get_sessions_for_ticker_empty(self, fact_store: FactStore) -> None:
+        assert fact_store.get_sessions_for_ticker("AAPL") == []
+
+    def test_save_digest_with_empty_lists(self, fact_store: FactStore) -> None:
+        """Digests for sessions with no tickers/theses persist with empty arrays."""
+        fact_store.save_digest(
+            _make_digest(
+                session_id="empty",
+                tickers_discussed=[],
+                intent_types_used=[],
+                thesis_ids=[],
+            )
+        )
+        # Can't look it up by ticker (none discussed) — query table directly.
+        rows = fact_store.connection.execute(
+            "SELECT tickers_discussed, intent_types_used, thesis_ids "
+            "FROM session_digests WHERE session_id = 'empty'"
+        ).fetchone()
+        assert rows is not None
+        assert list(rows[0]) == []
+        assert list(rows[1]) == []
+        assert list(rows[2]) == []
 
 
 # ---------------------------------------------------------------------------

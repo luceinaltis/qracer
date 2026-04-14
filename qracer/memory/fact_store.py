@@ -6,6 +6,11 @@ Follows the same connection pattern as ``storage/repositories.py``.
 The store uses its own DuckDB file (``fact_store.duckdb``), separate from
 ``memory_index.duckdb``, so the existing :class:`MemorySearcher` is
 completely unaffected.
+
+SessionDigest persistence complements the free-text Markdown summary
+produced by :class:`SessionCompactor` by preserving structured metadata
+(tickers discussed, intent types used, thesis ids, turn count) that the
+Markdown summary would otherwise lose.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ from pathlib import Path
 
 import duckdb
 
-from qracer.memory.fact_models import PersistedThesis, ThesisStatus
+from qracer.memory.fact_models import PersistedThesis, SessionDigest, ThesisStatus
 from qracer.models.base import TradeThesis
 
 logger = logging.getLogger(__name__)
@@ -42,6 +47,16 @@ CREATE TABLE IF NOT EXISTS theses (
     created_at        TIMESTAMP NOT NULL,
     updated_at        TIMESTAMP NOT NULL,
     superseded_by     INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS session_digests (
+    session_id        VARCHAR PRIMARY KEY,
+    tickers_discussed VARCHAR[] NOT NULL,
+    intent_types_used VARCHAR[] NOT NULL,
+    thesis_ids        INTEGER[] NOT NULL,
+    key_conclusions   VARCHAR NOT NULL,
+    turn_count        INTEGER NOT NULL,
+    created_at        TIMESTAMP NOT NULL
 );
 """
 
@@ -100,6 +115,19 @@ _SELECT_COLUMNS = (
     "risk_reward_ratio, catalyst, catalyst_date, conviction, summary, "
     "status, session_id, created_at, updated_at, superseded_by"
 )
+
+
+def _row_to_digest(row: tuple) -> SessionDigest:
+    """Convert a DuckDB row tuple to a SessionDigest."""
+    return SessionDigest(
+        session_id=row[0],
+        tickers_discussed=list(row[1]) if row[1] is not None else [],
+        intent_types_used=list(row[2]) if row[2] is not None else [],
+        thesis_ids=list(row[3]) if row[3] is not None else [],
+        key_conclusions=row[4],
+        turn_count=row[5],
+        created_at=row[6],
+    )
 
 
 class FactStore:
@@ -241,6 +269,57 @@ class FactStore:
             "UPDATE theses SET status = ?, superseded_by = ?, updated_at = ? WHERE id = ?",
             [status.value, superseded_by, datetime.now(), thesis_id],
         )
+
+    # ------------------------------------------------------------------
+    # SessionDigest CRUD
+    # ------------------------------------------------------------------
+
+    def save_digest(self, digest: SessionDigest) -> None:
+        """Persist a :class:`SessionDigest` (upsert by ``session_id``).
+
+        Subsequent calls for the same ``session_id`` overwrite the prior
+        digest, so the table always reflects the latest cumulative state
+        of the session (which may be compacted multiple times).
+        """
+        self._conn.execute(
+            "DELETE FROM session_digests WHERE session_id = ?",
+            [digest.session_id],
+        )
+        self._conn.execute(
+            """
+            INSERT INTO session_digests (
+                session_id, tickers_discussed, intent_types_used,
+                thesis_ids, key_conclusions, turn_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                digest.session_id,
+                list(digest.tickers_discussed),
+                list(digest.intent_types_used),
+                list(digest.thesis_ids),
+                digest.key_conclusions,
+                digest.turn_count,
+                digest.created_at,
+            ],
+        )
+
+    def get_sessions_for_ticker(self, ticker: str, limit: int = 20) -> list[SessionDigest]:
+        """Return session digests whose ``tickers_discussed`` contains *ticker*.
+
+        Results are ordered by ``created_at`` descending (most recent first).
+        """
+        rows = self._conn.execute(
+            """
+            SELECT session_id, tickers_discussed, intent_types_used,
+                   thesis_ids, key_conclusions, turn_count, created_at
+            FROM session_digests
+            WHERE list_contains(tickers_discussed, ?)
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            [ticker, limit],
+        ).fetchall()
+        return [_row_to_digest(r) for r in rows]
 
     # ------------------------------------------------------------------
     # Lifecycle

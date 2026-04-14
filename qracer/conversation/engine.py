@@ -35,9 +35,10 @@ from qracer.conversation.report_exporter import ReportExporter
 from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynthesizer
 from qracer.data.registry import DataRegistry
 from qracer.llm.registry import LLMRegistry
+from qracer.memory.fact_models import SessionDigest
 from qracer.memory.fact_store import FactStore
 from qracer.memory.memory_searcher import MemorySearcher
-from qracer.memory.session_compactor import SessionCompactor
+from qracer.memory.session_compactor import CompactionResult, SessionCompactor
 from qracer.memory.session_logger import SessionLogger, TurnRecord
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,13 @@ class ConversationEngine:
         self._turn_counter = 0
         self._last_response: EngineResponse | None = None
         self._config_version = 0
+
+        # Cumulative session metadata used to build a :class:`SessionDigest`
+        # on compaction. Insertion-ordered dicts act as ordered sets so the
+        # digest lists remain deterministic for tests and readability.
+        self._tickers_discussed: dict[str, None] = {}
+        self._intent_types_used: dict[str, None] = {}
+        self._thesis_ids: list[int] = []
 
     def update_registries(
         self,
@@ -229,6 +237,7 @@ class ConversationEngine:
                 result.turn_count,
                 result.output_tokens,
             )
+            self._save_session_digest(result)
         except Exception:
             logger.warning("Session compaction failed", exc_info=True)
 
@@ -321,11 +330,19 @@ class ConversationEngine:
         # 3. Common post-processing: history, logging, compaction.
         self._history.append({"role": "assistant", "content": result.text})
         self._log_turn("assistant", result.text)
-        await self._maybe_compact()
+
+        # Accumulate structured session metadata for the digest written on
+        # compaction. We record this before compaction so the digest reflects
+        # the query that just completed.
+        for ticker in intent.tickers:
+            self._tickers_discussed.setdefault(ticker, None)
+        self._intent_types_used.setdefault(intent.intent_type.value, None)
 
         response = EngineResponse(text=result.text, intent=intent, analysis=result.analysis)
         self._last_response = response
         self._persist_facts(result.analysis)
+
+        await self._maybe_compact()
         return response
 
     def _persist_facts(self, analysis: AnalysisResult) -> None:
@@ -333,6 +350,31 @@ class ConversationEngine:
         if self._fact_store is None or analysis.trade_thesis is None:
             return
         try:
-            self._fact_store.save_thesis(analysis.trade_thesis, self._session_id)
+            thesis_id = self._fact_store.save_thesis(analysis.trade_thesis, self._session_id)
+            self._thesis_ids.append(thesis_id)
         except Exception:
             logger.warning("Failed to persist thesis to fact store", exc_info=True)
+
+    def _save_session_digest(self, result: CompactionResult) -> None:
+        """Write a SessionDigest for the current session to the fact store.
+
+        Called after a successful compaction. The digest captures the
+        cumulative set of tickers and intent types seen this session, plus
+        the thesis ids persisted so far and the free-text summary as
+        ``key_conclusions``. Safe to call repeatedly — :meth:`FactStore.save_digest`
+        upserts by ``session_id``.
+        """
+        if self._fact_store is None:
+            return
+        try:
+            digest = SessionDigest(
+                session_id=self._session_id,
+                tickers_discussed=list(self._tickers_discussed.keys()),
+                intent_types_used=list(self._intent_types_used.keys()),
+                thesis_ids=list(self._thesis_ids),
+                key_conclusions=result.summary,
+                turn_count=result.turn_count,
+            )
+            self._fact_store.save_digest(digest)
+        except Exception:
+            logger.warning("Failed to persist session digest to fact store", exc_info=True)
