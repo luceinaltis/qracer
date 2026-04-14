@@ -51,9 +51,7 @@ class TestTradeThesisExtraction:
         assert draft.confidence == 0.8
 
     def test_missing_catalyst_skips(self) -> None:
-        drafts = extract_findings(
-            _ok("trade_thesis", self._thesis(catalyst=""))
-        )
+        drafts = extract_findings(_ok("trade_thesis", self._thesis(catalyst="")))
         assert drafts == []
 
     def test_conviction_clamped_to_unit_interval(self) -> None:
