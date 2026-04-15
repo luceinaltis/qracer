@@ -1059,9 +1059,12 @@ def serve(check_interval: int) -> None:
     from qracer.autonomous import AutonomousMonitor
     from qracer.watchlist import Watchlist
 
+    # Watchlist is shared by the autonomous monitor and the Telegram
+    # /watchlist + /briefing commands, so build it unconditionally.
+    watchlist = Watchlist(_user_dir() / "watchlist.json")
+
     autonomous_monitor: AutonomousMonitor | None = None
     if app_cfg.autonomous_enabled:
-        watchlist = Watchlist(_user_dir() / "watchlist.json")
         autonomous_monitor = AutonomousMonitor(
             watchlist,
             data_registry,
@@ -1070,6 +1073,9 @@ def serve(check_interval: int) -> None:
             cooldown_minutes=app_cfg.alert_cooldown_minutes,
         )
 
+    sessions_dir = _user_dir() / "sessions"
+    reports_dir = _user_dir() / "reports"
+
     server = Server(
         alert_monitor,
         task_executor,
@@ -1077,6 +1083,10 @@ def serve(check_interval: int) -> None:
         autonomous_monitor=autonomous_monitor,
         telegram_poller=telegram_poller,
         tick_interval=1.0,
+        watchlist=watchlist,
+        data_registry=data_registry,
+        sessions_dir=sessions_dir,
+        reports_dir=reports_dir,
     )
 
     def _handle_signal(signum: int, _frame: object) -> None:
@@ -1096,7 +1106,14 @@ def serve(check_interval: int) -> None:
             f" cooldown={app_cfg.alert_cooldown_minutes}m"
         )
     if telegram_poller is not None:
-        click.echo("  Telegram bot: receiving commands (try /help in chat)")
+        authorised = len(telegram_poller.allowed_chat_ids)
+        if authorised > 1:
+            click.echo(
+                f"  Telegram bot: receiving commands ({authorised} authorised chats; "
+                "try /help in chat)"
+            )
+        else:
+            click.echo("  Telegram bot: receiving commands (try /help in chat)")
     click.echo("  Press Ctrl+C to stop.\n")
 
     try:
