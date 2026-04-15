@@ -133,9 +133,7 @@ class TestInitializeProvider:
         assert any("reported unhealthy" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_initialize_failure_returns_false(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_initialize_failure_returns_false(self, caplog: pytest.LogCaptureFixture) -> None:
         a = _AsyncAdapter(fail_init=True)
         caplog.set_level(logging.WARNING, logger="qracer.provider_lifecycle")
         assert await initialize_provider("acme", a) is False
