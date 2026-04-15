@@ -8,16 +8,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
+from pathlib import Path
 
 from qracer.alert_monitor import AlertMonitor
 from qracer.alerts import AlertCondition
 from qracer.autonomous import AutonomousMonitor
+from qracer.conversation.quickpath import generate_briefing
+from qracer.data.providers import PriceProvider
+from qracer.data.registry import DataRegistry
 from qracer.notifications.providers import Notification, NotificationCategory
 from qracer.notifications.registry import NotificationRegistry
 from qracer.notifications.telegram_poller import BotCommand, TelegramBotPoller
 from qracer.task_executor import TaskExecutor
 from qracer.tasks import TaskActionType
+from qracer.watchlist import Watchlist
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +47,10 @@ class Server:
         autonomous_monitor: AutonomousMonitor | None = None,
         telegram_poller: TelegramBotPoller | None = None,
         tick_interval: float = 1.0,
+        watchlist: Watchlist | None = None,
+        data_registry: DataRegistry | None = None,
+        sessions_dir: Path | None = None,
+        reports_dir: Path | None = None,
     ) -> None:
         self._alert_monitor = alert_monitor
         self._task_executor = task_executor
@@ -48,6 +58,10 @@ class Server:
         self._notifications = notifications or NotificationRegistry()
         self._telegram_poller = telegram_poller
         self._tick_interval = tick_interval
+        self._watchlist = watchlist
+        self._data_registry = data_registry
+        self._sessions_dir = sessions_dir
+        self._reports_dir = reports_dir
         self._shutdown_event = asyncio.Event()
         self._started_at: float | None = None
 
@@ -124,14 +138,16 @@ class Server:
     async def _handle_bot_command(self, command: BotCommand) -> None:
         """Dispatch an incoming bot command and reply with the result."""
         try:
-            reply = self._dispatch_bot_command(command)
+            reply = await self._dispatch_bot_command(command)
         except Exception as exc:
             logger.exception("Bot command handler failed: /%s", command.action)
             reply = f"Error handling /{command.action}: {exc}"
         if reply and self._telegram_poller is not None:
-            await self._telegram_poller.send_reply(reply)
+            await self._telegram_poller.send_reply(
+                reply, chat_id=command.chat_id or None
+            )
 
-    def _dispatch_bot_command(self, command: BotCommand) -> str:
+    async def _dispatch_bot_command(self, command: BotCommand) -> str:
         """Route a :class:`BotCommand` to the matching handler.
 
         Handlers return the reply text to send back to the user. Long
@@ -150,6 +166,12 @@ class Server:
             return self._cmd_tasks()
         if action == "schedule":
             return self._cmd_schedule(command.args)
+        if action == "briefing":
+            return await self._cmd_briefing()
+        if action == "watchlist":
+            return await self._cmd_watchlist()
+        if action == "thesis":
+            return self._cmd_thesis()
         if action in {"analyze", "portfolio"}:
             return (
                 f"/{action} is not supported in bot mode yet — "
@@ -166,6 +188,9 @@ class Server:
         return (
             "qracer bot commands:\n"
             "/status — server status and uptime\n"
+            "/briefing — session briefing since the last REPL run\n"
+            "/watchlist — watchlist tickers with current prices\n"
+            "/thesis — recent saved trade theses\n"
             "/alerts — list active price alerts\n"
             "/alert TICKER above|below PRICE — create a price alert\n"
             "/tasks — list scheduled tasks\n"
@@ -243,6 +268,96 @@ class Server:
             return f"Invalid schedule: {exc}"
         return f"Scheduled task {task.id}: {task.describe()}"
 
+    async def _cmd_briefing(self) -> str:
+        """Compose a session-start-style briefing from current state."""
+        if (
+            self._watchlist is None
+            or self._data_registry is None
+            or self._sessions_dir is None
+        ):
+            return (
+                "Briefing unavailable in this mode. "
+                "Run `qracer repl` on the host for session-start briefings."
+            )
+        try:
+            briefing = await generate_briefing(
+                self._watchlist,
+                self._data_registry,
+                self._alert_monitor.store,
+                self._task_executor.store,
+                self._sessions_dir,
+            )
+        except Exception:
+            logger.exception("Telegram /briefing generation failed")
+            return "Briefing failed — see server logs for details."
+        if not briefing:
+            return "No briefing: no prior session on file (or nothing new since)."
+        return briefing
+
+    async def _cmd_watchlist(self) -> str:
+        """Return watchlist tickers with current prices."""
+        if self._watchlist is None:
+            return "Watchlist unavailable — not configured on this server."
+        tickers = self._watchlist.tickers
+        if not tickers:
+            return "Watchlist is empty. Add tickers from the qracer REPL with 'watch TICKER'."
+        if self._data_registry is None:
+            return "Watchlist:\n" + "\n".join(f"  {t}" for t in tickers)
+        lines = [f"Watchlist ({len(tickers)}):"]
+        for ticker in tickers:
+            try:
+                price = await self._data_registry.async_get_with_fallback(
+                    PriceProvider, "get_price", ticker
+                )
+            except Exception:
+                logger.debug("Price fetch failed for %s", ticker, exc_info=True)
+                lines.append(f"  {ticker}: price unavailable")
+                continue
+            if isinstance(price, (int, float)):
+                lines.append(f"  {ticker}: ${price:,.2f}")
+            else:
+                lines.append(f"  {ticker}: price unavailable")
+        return "\n".join(lines)
+
+    def _cmd_thesis(self) -> str:
+        """Summarise the most recent saved trade-thesis report(s).
+
+        Reads the ``reports_dir`` the REPL writes to (via
+        :class:`~qracer.conversation.report_exporter.ReportExporter`) and
+        extracts the Trade-Thesis section of each Markdown report.
+        """
+        if self._reports_dir is None or not self._reports_dir.exists():
+            return (
+                "No saved theses found. Run the qracer REPL and use "
+                "`save` after a thesis query to make theses visible here."
+            )
+        try:
+            md_files = sorted(
+                (p for p in self._reports_dir.glob("*.md") if p.is_file()),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+        except OSError:
+            logger.debug("Failed to list reports dir", exc_info=True)
+            return "Thesis lookup failed — see server logs for details."
+
+        entries: list[str] = []
+        for path in md_files:
+            if len(entries) >= 3:
+                break
+            summary = _extract_thesis_section(path)
+            if summary is None:
+                continue
+            when = time.strftime(
+                "%Y-%m-%d %H:%M", time.localtime(path.stat().st_mtime)
+            )
+            entries.append(f"[{when}] {path.name}\n{summary}")
+
+        if not entries:
+            return "No saved theses found in reports directory."
+        header = f"Recent theses ({len(entries)}):"
+        return "\n\n".join([header, *entries])
+
     async def _notify(self, category: NotificationCategory, title: str, body: str) -> None:
         """Send a notification if any channels are registered."""
         if not self._notifications.channels:
@@ -253,6 +368,37 @@ class Server:
     def shutdown(self) -> None:
         """Signal the server to stop after the current tick."""
         self._shutdown_event.set()
+
+
+_THESIS_HEADING = re.compile(r"^##\s+Trade Thesis\s*$", re.MULTILINE)
+
+
+def _extract_thesis_section(path: Path) -> str | None:
+    """Return the ``## Trade Thesis`` body from a saved Markdown report.
+
+    Returns ``None`` if the file is unreadable or has no thesis section.
+    The returned text is trimmed to the next ``---`` or ``##`` boundary
+    and capped at 800 characters to keep Telegram replies compact.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = _THESIS_HEADING.search(text)
+    if match is None:
+        return None
+    body = text[match.end() :]
+
+    # Stop at the next top-level section or horizontal rule.
+    stop = len(body)
+    for marker in ("\n## ", "\n---"):
+        idx = body.find(marker)
+        if idx >= 0 and idx < stop:
+            stop = idx
+    body = body[:stop].strip()
+    if len(body) > 800:
+        body = body[:797] + "..."
+    return body or None
 
 
 def _format_duration(seconds: float) -> str:

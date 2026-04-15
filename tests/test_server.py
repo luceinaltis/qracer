@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from qracer.alerts import Alert, AlertCondition
 from qracer.notifications.telegram_poller import BotCommand
@@ -233,130 +233,132 @@ class TestBotCommandHandlers:
             **kwargs,
         )
 
-    def test_help(self) -> None:
+    async def test_help(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(BotCommand("help", [], "/help"))
+        out = await server._dispatch_bot_command(BotCommand("help", [], "/help"))
         assert "/status" in out
         assert "/alerts" in out
         assert "/alert" in out
         assert "/tasks" in out
         assert "/schedule" in out
 
-    def test_start_aliases_help(self) -> None:
+    async def test_start_aliases_help(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(BotCommand("start", [], "/start"))
+        out = await server._dispatch_bot_command(BotCommand("start", [], "/start"))
         assert "/status" in out
 
-    def test_unknown_command(self) -> None:
+    async def test_unknown_command(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(BotCommand("nope", [], "/nope"))
+        out = await server._dispatch_bot_command(BotCommand("nope", [], "/nope"))
         assert "Unknown command" in out
 
-    def test_analyze_returns_not_supported(self) -> None:
+    async def test_analyze_returns_not_supported(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(BotCommand("analyze", ["AAPL"], "/analyze AAPL"))
+        out = await server._dispatch_bot_command(BotCommand("analyze", ["AAPL"], "/analyze AAPL"))
         assert "not supported" in out.lower()
 
-    def test_portfolio_returns_not_supported(self) -> None:
+    async def test_portfolio_returns_not_supported(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(BotCommand("portfolio", [], "/portfolio"))
+        out = await server._dispatch_bot_command(BotCommand("portfolio", [], "/portfolio"))
         assert "not supported" in out.lower()
 
-    def test_status(self) -> None:
+    async def test_status(self) -> None:
         notifications = MagicMock()
         notifications.channels = ["telegram"]
         server = self._server(notifications=notifications)
-        out = server._dispatch_bot_command(BotCommand("status", [], "/status"))
+        out = await server._dispatch_bot_command(BotCommand("status", [], "/status"))
         assert "uptime" in out
         assert "telegram" in out
         assert "autonomous: off" in out
 
-    def test_alerts_empty(self) -> None:
+    async def test_alerts_empty(self) -> None:
         monitor = _make_monitor()
         monitor.store.get_active.return_value = []
         server = self._server(monitor=monitor)
-        out = server._dispatch_bot_command(BotCommand("alerts", [], "/alerts"))
+        out = await server._dispatch_bot_command(BotCommand("alerts", [], "/alerts"))
         assert out == "No active alerts."
 
-    def test_alerts_lists_each(self) -> None:
+    async def test_alerts_lists_each(self) -> None:
         monitor = _make_monitor()
         monitor.store.get_active.return_value = [
             _alert("a1", "AAPL", 200),
             _alert("b2", "MSFT", 410),
         ]
         server = self._server(monitor=monitor)
-        out = server._dispatch_bot_command(BotCommand("alerts", [], "/alerts"))
+        out = await server._dispatch_bot_command(BotCommand("alerts", [], "/alerts"))
         assert "a1" in out
         assert "AAPL" in out
         assert "b2" in out
         assert "MSFT" in out
 
-    def test_create_alert_validates_args(self) -> None:
+    async def test_create_alert_validates_args(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(BotCommand("alert", ["AAPL"], "/alert AAPL"))
+        out = await server._dispatch_bot_command(BotCommand("alert", ["AAPL"], "/alert AAPL"))
         assert "Usage" in out
 
-    def test_create_alert_rejects_unknown_condition(self) -> None:
+    async def test_create_alert_rejects_unknown_condition(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(
+        out = await server._dispatch_bot_command(
             BotCommand("alert", ["AAPL", "near", "200"], "/alert AAPL near 200")
         )
         assert "Unknown condition" in out
 
-    def test_create_alert_rejects_change_pct(self) -> None:
+    async def test_create_alert_rejects_change_pct(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(
+        out = await server._dispatch_bot_command(
             BotCommand("alert", ["AAPL", "change_pct", "5"], "/alert AAPL change_pct 5")
         )
         assert "change_pct" in out
         assert "CLI" in out
 
-    def test_create_alert_rejects_invalid_price(self) -> None:
+    async def test_create_alert_rejects_invalid_price(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(
+        out = await server._dispatch_bot_command(
             BotCommand("alert", ["AAPL", "above", "abc"], "/alert AAPL above abc")
         )
         assert "Invalid price" in out
 
-    def test_create_alert_persists(self) -> None:
+    async def test_create_alert_persists(self) -> None:
         monitor = _make_monitor()
         created = _alert("xx", "AAPL", 200)
         monitor.store.create.return_value = created
         server = self._server(monitor=monitor)
-        out = server._dispatch_bot_command(
+        out = await server._dispatch_bot_command(
             BotCommand("alert", ["AAPL", "above", "200"], "/alert AAPL above 200")
         )
         monitor.store.create.assert_called_once_with("AAPL", AlertCondition.ABOVE, 200.0)
         assert "Created alert xx" in out
 
-    def test_tasks_empty(self) -> None:
+    async def test_tasks_empty(self) -> None:
         executor = _make_executor()
         executor.store.get_active.return_value = []
         server = self._server(executor=executor)
-        out = server._dispatch_bot_command(BotCommand("tasks", [], "/tasks"))
+        out = await server._dispatch_bot_command(BotCommand("tasks", [], "/tasks"))
         assert out == "No scheduled tasks."
 
-    def test_tasks_lists_each(self) -> None:
+    async def test_tasks_lists_each(self) -> None:
         executor = _make_executor()
         executor.store.get_active.return_value = [
             _task("t1", "AAPL"),
             _task("t2", "MSFT", schedule="daily 09:30"),
         ]
         server = self._server(executor=executor)
-        out = server._dispatch_bot_command(BotCommand("tasks", [], "/tasks"))
+        out = await server._dispatch_bot_command(BotCommand("tasks", [], "/tasks"))
         assert "t1" in out
         assert "AAPL" in out
         assert "t2" in out
         assert "daily 09:30" in out
 
-    def test_schedule_validates_args(self) -> None:
+    async def test_schedule_validates_args(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(BotCommand("schedule", ["analyze"], "/schedule analyze"))
+        out = await server._dispatch_bot_command(
+            BotCommand("schedule", ["analyze"], "/schedule analyze")
+        )
         assert "Usage" in out
 
-    def test_schedule_rejects_unknown_action(self) -> None:
+    async def test_schedule_rejects_unknown_action(self) -> None:
         server = self._server()
-        out = server._dispatch_bot_command(
+        out = await server._dispatch_bot_command(
             BotCommand(
                 "schedule",
                 ["foo", "AAPL", "every", "1h"],
@@ -365,11 +367,11 @@ class TestBotCommandHandlers:
         )
         assert "Unknown action" in out
 
-    def test_schedule_rejects_invalid_spec(self) -> None:
+    async def test_schedule_rejects_invalid_spec(self) -> None:
         executor = _make_executor()
         executor.store.create.side_effect = ValueError("bad spec")
         server = self._server(executor=executor)
-        out = server._dispatch_bot_command(
+        out = await server._dispatch_bot_command(
             BotCommand(
                 "schedule",
                 ["analyze", "AAPL", "tomorrow"],
@@ -379,11 +381,11 @@ class TestBotCommandHandlers:
         assert "Invalid schedule" in out
         assert "bad spec" in out
 
-    def test_schedule_creates_task(self) -> None:
+    async def test_schedule_creates_task(self) -> None:
         executor = _make_executor()
         executor.store.create.return_value = _task("nn", "AAPL")
         server = self._server(executor=executor)
-        out = server._dispatch_bot_command(
+        out = await server._dispatch_bot_command(
             BotCommand(
                 "schedule",
                 ["analyze", "aapl", "every", "1h"],
@@ -394,6 +396,270 @@ class TestBotCommandHandlers:
             TaskActionType.ANALYZE, {"ticker": "AAPL"}, "every 1h"
         )
         assert "Scheduled task nn" in out
+
+
+class TestNewBotCommands:
+    """Tests for the /briefing, /watchlist, and /thesis handlers."""
+
+    @staticmethod
+    def _server(**kwargs) -> Server:
+        return Server(_make_monitor(), _make_executor(), **kwargs)
+
+    # ---- /briefing ----
+
+    async def test_briefing_missing_deps_returns_hint(self) -> None:
+        server = self._server()
+        out = await server._dispatch_bot_command(
+            BotCommand("briefing", [], "/briefing")
+        )
+        assert "Briefing unavailable" in out
+
+    async def test_briefing_no_prior_session_returns_hint(self, tmp_path) -> None:
+        import qracer.server as server_mod
+
+        watchlist = MagicMock()
+        data_registry = MagicMock()
+        server = self._server(
+            watchlist=watchlist,
+            data_registry=data_registry,
+            sessions_dir=tmp_path,
+        )
+        with patch.object(
+            server_mod, "generate_briefing", AsyncMock(return_value=None)
+        ):
+            out = await server._dispatch_bot_command(
+                BotCommand("briefing", [], "/briefing")
+            )
+        assert "No briefing" in out
+
+    async def test_briefing_returns_briefing_text(self, tmp_path) -> None:
+        import qracer.server as server_mod
+
+        watchlist = MagicMock()
+        data_registry = MagicMock()
+        server = self._server(
+            watchlist=watchlist,
+            data_registry=data_registry,
+            sessions_dir=tmp_path,
+        )
+        with patch.object(
+            server_mod,
+            "generate_briefing",
+            AsyncMock(return_value="Session Briefing\n  AAPL: $200"),
+        ):
+            out = await server._dispatch_bot_command(
+                BotCommand("briefing", [], "/briefing")
+            )
+        assert "Session Briefing" in out
+        assert "AAPL" in out
+
+    async def test_briefing_failure_is_reported(self, tmp_path) -> None:
+        import qracer.server as server_mod
+
+        watchlist = MagicMock()
+        data_registry = MagicMock()
+        server = self._server(
+            watchlist=watchlist,
+            data_registry=data_registry,
+            sessions_dir=tmp_path,
+        )
+        with patch.object(
+            server_mod,
+            "generate_briefing",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        ):
+            out = await server._dispatch_bot_command(
+                BotCommand("briefing", [], "/briefing")
+            )
+        assert "Briefing failed" in out
+
+    # ---- /watchlist ----
+
+    async def test_watchlist_unconfigured(self) -> None:
+        server = self._server()
+        out = await server._dispatch_bot_command(
+            BotCommand("watchlist", [], "/watchlist")
+        )
+        assert "unavailable" in out.lower()
+
+    async def test_watchlist_empty(self) -> None:
+        watchlist = MagicMock()
+        watchlist.tickers = []
+        server = self._server(watchlist=watchlist)
+        out = await server._dispatch_bot_command(
+            BotCommand("watchlist", [], "/watchlist")
+        )
+        assert "empty" in out.lower()
+
+    async def test_watchlist_no_data_registry_shows_tickers_only(self) -> None:
+        watchlist = MagicMock()
+        watchlist.tickers = ["AAPL", "NVDA"]
+        server = self._server(watchlist=watchlist)
+        out = await server._dispatch_bot_command(
+            BotCommand("watchlist", [], "/watchlist")
+        )
+        assert "AAPL" in out
+        assert "NVDA" in out
+        assert "$" not in out  # no price data
+
+    async def test_watchlist_with_prices(self) -> None:
+        watchlist = MagicMock()
+        watchlist.tickers = ["AAPL", "NVDA"]
+        data_registry = MagicMock()
+        data_registry.async_get_with_fallback = AsyncMock(
+            side_effect=[200.0, 1250.5]
+        )
+        server = self._server(watchlist=watchlist, data_registry=data_registry)
+        out = await server._dispatch_bot_command(
+            BotCommand("watchlist", [], "/watchlist")
+        )
+        assert "AAPL: $200.00" in out
+        assert "NVDA: $1,250.50" in out
+
+    async def test_watchlist_handles_price_failures(self) -> None:
+        watchlist = MagicMock()
+        watchlist.tickers = ["AAPL", "BAD"]
+        data_registry = MagicMock()
+        data_registry.async_get_with_fallback = AsyncMock(
+            side_effect=[200.0, RuntimeError("no feed")]
+        )
+        server = self._server(watchlist=watchlist, data_registry=data_registry)
+        out = await server._dispatch_bot_command(
+            BotCommand("watchlist", [], "/watchlist")
+        )
+        assert "AAPL: $200.00" in out
+        assert "BAD: price unavailable" in out
+
+    async def test_watchlist_handles_non_numeric_price(self) -> None:
+        watchlist = MagicMock()
+        watchlist.tickers = ["FOO"]
+        data_registry = MagicMock()
+        data_registry.async_get_with_fallback = AsyncMock(return_value=None)
+        server = self._server(watchlist=watchlist, data_registry=data_registry)
+        out = await server._dispatch_bot_command(
+            BotCommand("watchlist", [], "/watchlist")
+        )
+        assert "FOO: price unavailable" in out
+
+    # ---- /thesis ----
+
+    async def test_thesis_no_reports_dir(self) -> None:
+        server = self._server()
+        out = await server._dispatch_bot_command(
+            BotCommand("thesis", [], "/thesis")
+        )
+        assert "No saved theses" in out
+
+    async def test_thesis_empty_reports_dir(self, tmp_path) -> None:
+        server = self._server(reports_dir=tmp_path)
+        out = await server._dispatch_bot_command(
+            BotCommand("thesis", [], "/thesis")
+        )
+        assert "No saved theses" in out
+
+    async def test_thesis_skips_reports_without_thesis_section(
+        self, tmp_path
+    ) -> None:
+        (tmp_path / "notes.md").write_text("# Hello\n\nJust a note.\n")
+        server = self._server(reports_dir=tmp_path)
+        out = await server._dispatch_bot_command(
+            BotCommand("thesis", [], "/thesis")
+        )
+        assert "No saved theses" in out
+
+    async def test_thesis_lists_recent_saved_reports(self, tmp_path) -> None:
+        report = tmp_path / "AAPL-2026-04-15.md"
+        report.write_text(
+            "# Analysis Report: AAPL\n\n"
+            "---\n\n"
+            "## Trade Thesis\n\n"
+            "- **Ticker:** AAPL\n"
+            "- **Entry Zone:** $175.00 – $180.00\n"
+            "- **Target Price:** $200.00\n"
+            "- **Stop Loss:** $165.00\n"
+            "\nLong AAPL on AI earnings.\n\n"
+            "---\n\n"
+            "## Data Sources\n\n- news\n"
+        )
+        server = self._server(reports_dir=tmp_path)
+        out = await server._dispatch_bot_command(
+            BotCommand("thesis", [], "/thesis")
+        )
+        assert "Recent theses" in out
+        assert "AAPL-2026-04-15.md" in out
+        assert "Entry Zone" in out
+        # The "Data Sources" section should not leak into the thesis body.
+        assert "Data Sources" not in out
+
+    async def test_thesis_caps_at_three_entries(self, tmp_path) -> None:
+        import time as _t
+
+        body = (
+            "# Report\n\n## Trade Thesis\n\nSome thesis body.\n\n---\n"
+        )
+        for i in range(5):
+            p = tmp_path / f"T{i}.md"
+            p.write_text(body)
+            # Ensure distinct mtimes for deterministic ordering.
+            mtime = 1_700_000_000 + i
+            import os
+
+            os.utime(p, (mtime, mtime))
+            _ = _t  # silence unused-import in case of future refactors
+
+        server = self._server(reports_dir=tmp_path)
+        out = await server._dispatch_bot_command(
+            BotCommand("thesis", [], "/thesis")
+        )
+        # Three most-recent (T4, T3, T2), oldest two excluded.
+        assert "T4.md" in out
+        assert "T3.md" in out
+        assert "T2.md" in out
+        assert "T0.md" not in out
+        assert "T1.md" not in out
+
+
+class TestChatIdRoutedReplies:
+    async def test_reply_goes_back_to_sender_chat_id(self) -> None:
+        monitor = _make_monitor()
+        monitor.store.get_active.return_value = []
+        executor = _make_executor()
+        poller = _make_poller()
+        poller.poll = AsyncMock(
+            return_value=[
+                BotCommand(
+                    action="alerts",
+                    args=[],
+                    raw_text="/alerts",
+                    chat_id="42",
+                )
+            ]
+        )
+        server = Server(monitor, executor, telegram_poller=poller)
+        await server._tick()
+
+        poller.send_reply.assert_awaited_once()
+        args, kwargs = poller.send_reply.await_args
+        # Reply text is first positional, chat_id is passed by keyword.
+        assert kwargs.get("chat_id") == "42"
+
+    async def test_reply_chat_id_is_none_when_command_has_no_chat_id(
+        self,
+    ) -> None:
+        monitor = _make_monitor()
+        monitor.store.get_active.return_value = []
+        executor = _make_executor()
+        poller = _make_poller()
+        poller.poll = AsyncMock(
+            return_value=[BotCommand(action="alerts", args=[], raw_text="/alerts")]
+        )
+        server = Server(monitor, executor, telegram_poller=poller)
+        await server._tick()
+
+        poller.send_reply.assert_awaited_once()
+        _, kwargs = poller.send_reply.await_args
+        # Falls back to the poller's primary chat.
+        assert kwargs.get("chat_id") is None
 
 
 class TestFormatDuration:

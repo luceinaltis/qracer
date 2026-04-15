@@ -46,6 +46,11 @@ def build_notification_registry(
     return registry
 
 
+def _parse_chat_ids(raw: str) -> list[str]:
+    """Split a comma-separated chat-id list and drop blanks."""
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
 def build_telegram_poller(
     credentials: dict[str, str],
     *,
@@ -59,11 +64,28 @@ def build_telegram_poller(
     The default ``timeout=1`` keeps the long-poll short enough to coexist
     with the 1-second :class:`~qracer.server.Server` tick; standalone
     callers can pass a larger value (e.g. 30) for true long-polling.
+
+    ``TELEGRAM_ALLOWED_CHAT_IDS`` (comma-separated, optional) authorises
+    additional chats — e.g. ``"111,222"`` lets two users talk to the bot.
+    The primary chat (``TELEGRAM_CHAT_ID``) is always authorised and used as
+    the default reply target.
     """
     bot_token = credentials.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = credentials.get("TELEGRAM_CHAT_ID", "")
     if not bot_token or not chat_id:
         return None
-    poller = TelegramBotPoller(bot_token=bot_token, chat_id=chat_id, timeout=timeout)
-    logger.info("Telegram bot command poller initialised")
+    allowed = _parse_chat_ids(credentials.get("TELEGRAM_ALLOWED_CHAT_IDS", ""))
+    poller = TelegramBotPoller(
+        bot_token=bot_token,
+        chat_id=chat_id,
+        allowed_chat_ids=allowed or None,
+        timeout=timeout,
+    )
+    if len(poller.allowed_chat_ids) > 1:
+        logger.info(
+            "Telegram bot command poller initialised (authorised chats: %d)",
+            len(poller.allowed_chat_ids),
+        )
+    else:
+        logger.info("Telegram bot command poller initialised")
     return poller
