@@ -100,7 +100,10 @@ class ConversationEngine:
             data_registry, memory_searcher, language=language, fact_store=fact_store
         )
         self._comparison_handler = ComparisonHandler(
-            data_registry, comparison_synthesizer, memory_searcher
+            data_registry,
+            comparison_synthesizer,
+            memory_searcher,
+            fact_store=fact_store,
         )
         self._standard_handler = StandardHandler(
             data_registry,
@@ -156,7 +159,10 @@ class ConversationEngine:
             fact_store=self._fact_store,
         )
         self._comparison_handler = ComparisonHandler(
-            data_registry, comparison_synthesizer, self._memory_searcher
+            data_registry,
+            comparison_synthesizer,
+            self._memory_searcher,
+            fact_store=self._fact_store,
         )
         self._standard_handler = StandardHandler(
             data_registry,
