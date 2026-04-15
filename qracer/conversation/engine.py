@@ -36,6 +36,13 @@ from qracer.conversation.synthesizer import ComparisonSynthesizer, ResponseSynth
 from qracer.data.registry import DataRegistry
 from qracer.llm.registry import LLMRegistry
 from qracer.memory.fact_store import FactStore
+from qracer.memory.memory_file import (
+    MemoryDocument,
+    load_bootstrap,
+    load_memory,
+    refresh_memory,
+    save_memory,
+)
 from qracer.memory.memory_searcher import MemorySearcher
 from qracer.memory.session_compactor import SessionCompactor
 from qracer.memory.session_logger import SessionLogger, TurnRecord
@@ -73,6 +80,8 @@ class ConversationEngine:
         language: str = "en",
         summaries_dir: Path | None = None,
         fact_store: FactStore | None = None,
+        memory_path: Path | None = None,
+        bootstrap_path: Path | None = None,
     ) -> None:
         self._llm = llm_registry
         self._data = data_registry
@@ -82,6 +91,9 @@ class ConversationEngine:
         self._language = language
         self._summaries_dir = summaries_dir
         self._fact_store = fact_store
+        self._memory_path = memory_path
+        self._bootstrap_path = bootstrap_path
+        self._memory_doc: MemoryDocument | None = None
 
         analysis_loop = AnalysisLoop(
             llm_registry,
@@ -121,6 +133,10 @@ class ConversationEngine:
         self._turn_counter = 0
         self._last_response: EngineResponse | None = None
         self._config_version = 0
+
+        # Long-term memory: prime the session with MEMORY.md + BOOTSTRAP.md
+        # before the first user query so synthesizers see them via history.
+        self._prime_long_term_memory()
 
     def update_registries(
         self,
@@ -336,3 +352,62 @@ class ConversationEngine:
             self._fact_store.save_thesis(analysis.trade_thesis, self._session_id)
         except Exception:
             logger.warning("Failed to persist thesis to fact store", exc_info=True)
+            return
+        self._refresh_memory_file()
+
+    # ------------------------------------------------------------------
+    # Long-term memory (MEMORY.md + BOOTSTRAP.md)
+    # ------------------------------------------------------------------
+
+    @property
+    def memory_document(self) -> MemoryDocument | None:
+        """Most recently loaded MEMORY.md, or ``None`` if not configured."""
+        return self._memory_doc
+
+    def _prime_long_term_memory(self) -> None:
+        """Inject BOOTSTRAP.md and MEMORY.md into the session seed.
+
+        Both files are optional and isolated from the rest of the engine —
+        any failure is logged but never prevents the session from
+        starting. Content is pushed onto ``self._history`` as ``system``
+        messages so synthesizers and the intent parser see it through the
+        usual history path.
+        """
+        if self._bootstrap_path is not None:
+            try:
+                bootstrap = load_bootstrap(self._bootstrap_path)
+            except Exception:
+                logger.warning("Failed to load BOOTSTRAP.md", exc_info=True)
+                bootstrap = None
+            if bootstrap:
+                self._history.append({"role": "system", "content": bootstrap})
+
+        if self._memory_path is not None:
+            try:
+                self._memory_doc = load_memory(self._memory_path)
+            except Exception:
+                logger.warning("Failed to load MEMORY.md", exc_info=True)
+                self._memory_doc = None
+            if self._memory_doc is not None and (
+                self._memory_doc.auto_theses or self._memory_doc.auto_catalysts
+            ):
+                from qracer.memory.memory_file import render_memory
+
+                self._history.append({"role": "system", "content": render_memory(self._memory_doc)})
+
+    def _refresh_memory_file(self) -> None:
+        """Regenerate the MEMORY.md auto region from the fact store.
+
+        Called after each successful ``_persist_facts`` so active theses
+        stay current without user intervention. User-authored sections
+        are preserved verbatim.
+        """
+        if self._memory_path is None or self._fact_store is None:
+            return
+        try:
+            current = self._memory_doc or load_memory(self._memory_path)
+            refreshed = refresh_memory(current, self._fact_store)
+            save_memory(refreshed, self._memory_path)
+            self._memory_doc = refreshed
+        except Exception:
+            logger.warning("Failed to refresh MEMORY.md", exc_info=True)
