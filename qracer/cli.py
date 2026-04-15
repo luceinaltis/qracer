@@ -967,9 +967,7 @@ def repl() -> None:
     # Overnight autonomous findings (persisted by ``qracer serve``).
     from qracer.autonomous import AutonomousAlertStore
 
-    autonomous_alert_store = AutonomousAlertStore(
-        _user_dir() / "autonomous_alerts.json"
-    )
+    autonomous_alert_store = AutonomousAlertStore(_user_dir() / "autonomous_alerts.json")
 
     # Task scheduler
     from qracer.task_executor import TaskExecutor
@@ -1080,9 +1078,7 @@ def serve(check_interval: int) -> None:
             price_threshold_pct=app_cfg.price_move_threshold_pct,
             cooldown_minutes=app_cfg.alert_cooldown_minutes,
         )
-        autonomous_alert_store = AutonomousAlertStore(
-            _user_dir() / "autonomous_alerts.json"
-        )
+        autonomous_alert_store = AutonomousAlertStore(_user_dir() / "autonomous_alerts.json")
 
     server = Server(
         alert_monitor,

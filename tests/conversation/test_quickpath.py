@@ -456,9 +456,7 @@ class TestGenerateBriefing:
         assert "Overnight Autonomous Findings (13)" in result
         assert "and 3 more" in result
 
-    async def test_autonomous_findings_none_when_store_empty(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_autonomous_findings_none_when_store_empty(self, tmp_path: Path) -> None:
         sessions_dir = tmp_path / "sessions"
         _make_previous_session(sessions_dir)
         watchlist = Watchlist(tmp_path / "watchlist.json")

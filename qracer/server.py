@@ -112,9 +112,7 @@ class Server:
                         except Exception:
                             # Persistence failure shouldn't block the alert
                             # from being delivered — log and continue.
-                            logger.debug(
-                                "Failed to persist autonomous alert", exc_info=True
-                            )
+                            logger.debug("Failed to persist autonomous alert", exc_info=True)
                     await self._notify(
                         NotificationCategory.AUTONOMOUS_MODE,
                         f"[{alert.severity.value.upper()}] {alert.ticker}",

@@ -510,15 +510,9 @@ class TestAutonomousAlertStore:
     def test_get_since_orders_newest_first(self, tmp_path) -> None:
         store = AutonomousAlertStore(tmp_path / "auto.json")
         now = datetime.now(timezone.utc)
-        oldest = _alert(
-            "A", summary="first", created_at=(now - timedelta(minutes=30)).isoformat()
-        )
-        middle = _alert(
-            "B", summary="second", created_at=(now - timedelta(minutes=20)).isoformat()
-        )
-        newest = _alert(
-            "C", summary="third", created_at=(now - timedelta(minutes=10)).isoformat()
-        )
+        oldest = _alert("A", summary="first", created_at=(now - timedelta(minutes=30)).isoformat())
+        middle = _alert("B", summary="second", created_at=(now - timedelta(minutes=20)).isoformat())
+        newest = _alert("C", summary="third", created_at=(now - timedelta(minutes=10)).isoformat())
         # Save out of order to verify the store sorts on retrieval.
         store.save(middle)
         store.save(oldest)
