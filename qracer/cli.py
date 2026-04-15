@@ -385,6 +385,7 @@ async def _repl_loop(
     sessions_dir: Path | None = None,
     current_session: Path | None = None,
     fact_store: object | None = None,
+    autonomous_alert_store: object | None = None,
 ) -> None:
     """Run the interactive read-eval-print loop."""
     from qracer.alert_monitor import AlertMonitor
@@ -414,6 +415,7 @@ async def _repl_loop(
                 sessions_dir,
                 current_session=current_session,
                 fact_store=fact_store,  # type: ignore[arg-type]
+                autonomous_alert_store=autonomous_alert_store,  # type: ignore[arg-type]
             )
         except Exception:
             logger.debug("Session briefing generation failed", exc_info=True)
@@ -962,6 +964,13 @@ def repl() -> None:
     alert_store = AlertStore(_user_dir() / "alerts.json")
     alert_monitor = AlertMonitor(alert_store, data_registry)
 
+    # Overnight autonomous findings (persisted by ``qracer serve``).
+    from qracer.autonomous import AutonomousAlertStore
+
+    autonomous_alert_store = AutonomousAlertStore(
+        _user_dir() / "autonomous_alerts.json"
+    )
+
     # Task scheduler
     from qracer.task_executor import TaskExecutor
     from qracer.tasks import TaskStore
@@ -993,6 +1002,7 @@ def repl() -> None:
             sessions_dir=sessions_dir,
             current_session=session_logger.path,
             fact_store=fact_store,
+            autonomous_alert_store=autonomous_alert_store,
         )
     )
 
@@ -1056,18 +1066,22 @@ def serve(check_interval: int) -> None:
     telegram_poller = build_telegram_poller(config.credentials)
 
     # Autonomous market monitoring
-    from qracer.autonomous import AutonomousMonitor
+    from qracer.autonomous import AutonomousAlertStore, AutonomousMonitor
     from qracer.watchlist import Watchlist
 
     autonomous_monitor: AutonomousMonitor | None = None
+    autonomous_alert_store: AutonomousAlertStore | None = None
     if app_cfg.autonomous_enabled:
         watchlist = Watchlist(_user_dir() / "watchlist.json")
         autonomous_monitor = AutonomousMonitor(
             watchlist,
             data_registry,
-            check_interval=check_interval,
+            check_interval=app_cfg.autonomous_check_interval_seconds,
             price_threshold_pct=app_cfg.price_move_threshold_pct,
             cooldown_minutes=app_cfg.alert_cooldown_minutes,
+        )
+        autonomous_alert_store = AutonomousAlertStore(
+            _user_dir() / "autonomous_alerts.json"
         )
 
     server = Server(
@@ -1075,6 +1089,7 @@ def serve(check_interval: int) -> None:
         task_executor,
         notifications,
         autonomous_monitor=autonomous_monitor,
+        autonomous_alert_store=autonomous_alert_store,
         telegram_poller=telegram_poller,
         tick_interval=1.0,
     )
@@ -1092,7 +1107,8 @@ def serve(check_interval: int) -> None:
         click.echo(f"  Notifications: {', '.join(channels)}")
     if autonomous_monitor:
         click.echo(
-            f"  Autonomous monitoring: threshold={app_cfg.price_move_threshold_pct}%,"
+            f"  Autonomous monitoring: every {app_cfg.autonomous_check_interval_seconds}s,"
+            f" threshold={app_cfg.price_move_threshold_pct}%,"
             f" cooldown={app_cfg.alert_cooldown_minutes}m"
         )
     if telegram_poller is not None:

@@ -133,6 +133,95 @@ class TestServer:
         await server._tick()  # Should not raise
 
 
+class TestServerAutonomousPersistence:
+    async def test_tick_persists_autonomous_alerts_to_store(self) -> None:
+        from qracer.autonomous import AutonomousAlert, Severity, TriggerType
+
+        alert = AutonomousAlert(
+            ticker="AAPL",
+            trigger_type=TriggerType.PRICE_MOVE,
+            summary="AAPL moved up 5%",
+            severity=Severity.CRITICAL,
+        )
+        autonomous = MagicMock()
+        autonomous.should_check.return_value = True
+        autonomous.check = AsyncMock(return_value=[alert])
+
+        store = MagicMock()
+        monitor = _make_monitor()
+        executor = _make_executor()
+
+        server = Server(
+            monitor,
+            executor,
+            autonomous_monitor=autonomous,
+            autonomous_alert_store=store,
+        )
+        await server._tick()
+
+        store.save.assert_called_once_with(alert)
+
+    async def test_tick_no_store_still_notifies(self) -> None:
+        from qracer.autonomous import AutonomousAlert, Severity, TriggerType
+
+        alert = AutonomousAlert(
+            ticker="AAPL",
+            trigger_type=TriggerType.PRICE_MOVE,
+            summary="AAPL moved up 5%",
+            severity=Severity.INFO,
+        )
+        autonomous = MagicMock()
+        autonomous.should_check.return_value = True
+        autonomous.check = AsyncMock(return_value=[alert])
+        notifications = MagicMock()
+        notifications.channels = ["telegram"]
+        notifications.notify = AsyncMock(return_value={"telegram": True})
+
+        monitor = _make_monitor()
+        executor = _make_executor()
+        server = Server(
+            monitor,
+            executor,
+            notifications,
+            autonomous_monitor=autonomous,
+        )
+        await server._tick()
+
+        notifications.notify.assert_called_once()
+
+    async def test_tick_continues_when_store_save_fails(self) -> None:
+        from qracer.autonomous import AutonomousAlert, Severity, TriggerType
+
+        alert = AutonomousAlert(
+            ticker="AAPL",
+            trigger_type=TriggerType.PRICE_MOVE,
+            summary="AAPL moved up 5%",
+            severity=Severity.INFO,
+        )
+        autonomous = MagicMock()
+        autonomous.should_check.return_value = True
+        autonomous.check = AsyncMock(return_value=[alert])
+        store = MagicMock()
+        store.save.side_effect = RuntimeError("disk full")
+        notifications = MagicMock()
+        notifications.channels = ["telegram"]
+        notifications.notify = AsyncMock(return_value={"telegram": True})
+
+        monitor = _make_monitor()
+        executor = _make_executor()
+        server = Server(
+            monitor,
+            executor,
+            notifications,
+            autonomous_monitor=autonomous,
+            autonomous_alert_store=store,
+        )
+        await server._tick()  # Should not raise.
+
+        # Notification still fires despite the store failure.
+        notifications.notify.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # Telegram bot command integration
 # ---------------------------------------------------------------------------

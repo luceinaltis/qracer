@@ -25,6 +25,7 @@ class AppConfig(BaseModel):
 
     # Autonomous monitoring
     autonomous_enabled: bool = True
+    autonomous_check_interval_seconds: int = 60
     price_move_threshold_pct: float = 2.0
     alert_cooldown_minutes: int = 30
 

@@ -1,6 +1,10 @@
 # Autonomous Mode
 
-> **구현 예정** — 자율 모니터링 모드는 아직 구현되지 않았습니다.
+> **Status** — implemented for `qracer serve`. Price-move and breaking-news
+> triggers, cooldowns, notification routing (Telegram/macOS), persistence of
+> overnight findings, and the session-start briefing recap are live. Volume
+> spikes, portfolio P&L triggers, cross-market signals, and the scheduled
+> deep-analysis slots remain on the roadmap.
 
 qracer runs autonomously during market hours — monitoring watchlists, detecting significant events, and proactively alerting users without being asked.
 

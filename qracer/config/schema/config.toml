@@ -15,6 +15,7 @@ lookback_days = 30            # days of price history to fetch
 staleness_hours = 24          # hours before data is considered stale
 
 # Autonomous monitoring (qracer serve)
-autonomous_enabled = true     # enable watchlist monitoring during market hours
-price_move_threshold_pct = 2.0   # % move to trigger an alert
-alert_cooldown_minutes = 30   # minutes before re-alerting the same ticker
+autonomous_enabled = true              # enable watchlist monitoring during market hours
+autonomous_check_interval_seconds = 60 # seconds between autonomous scans
+price_move_threshold_pct = 2.0         # % move to trigger an alert
+alert_cooldown_minutes = 30            # minutes before re-alerting the same ticker

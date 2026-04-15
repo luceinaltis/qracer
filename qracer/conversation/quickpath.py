@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from qracer.alerts import Alert, AlertStore
+from qracer.autonomous import AutonomousAlertStore
 from qracer.conversation.intent import Intent, IntentType
 from qracer.data.providers import PriceProvider
 from qracer.data.registry import DataRegistry
@@ -216,13 +217,15 @@ async def generate_briefing(
     sessions_dir: Path,
     current_session: Path | None = None,
     fact_store: FactStore | None = None,
+    autonomous_alert_store: AutonomousAlertStore | None = None,
 ) -> str | None:
     """Generate a session-start briefing.
 
     Summarises activity since the previous session: current watchlist
-    prices, alerts that triggered while away, and any pending scheduled
-    tasks.  Returns ``None`` when there is no previous session on disk
-    or when nothing noteworthy is available.
+    prices, alerts that triggered while away, any overnight autonomous
+    findings produced by ``qracer serve``, and pending scheduled tasks.
+    Returns ``None`` when there is no previous session on disk or when
+    nothing noteworthy is available.
 
     Args:
         watchlist: User's ticker watchlist.
@@ -233,6 +236,10 @@ async def generate_briefing(
         current_session: Path of the current session log; excluded from
             "last session" detection so the briefing reflects activity
             since the previous run, not the current one.
+        fact_store: Optional FactStore for open-thesis recap.
+        autonomous_alert_store: Optional store of autonomous alerts
+            produced by ``qracer serve``; when provided, alerts fired
+            since the previous session are included in the briefing.
     """
     last_session = _find_last_session(sessions_dir, current_session=current_session)
     if last_session is None:
@@ -259,6 +266,17 @@ async def generate_briefing(
         lines.extend(triggered_lines)
         lines.append("")
         has_content = True
+
+    # Autonomous findings surfaced by ``qracer serve`` while away
+    if autonomous_alert_store is not None:
+        autonomous_lines, total_auto = _briefing_autonomous_lines(
+            autonomous_alert_store, since=last_session
+        )
+        if autonomous_lines:
+            lines.append(f"Overnight Autonomous Findings ({total_auto}):")
+            lines.extend(autonomous_lines)
+            lines.append("")
+            has_content = True
 
     # Pending tasks
     task_lines, pending_count = _briefing_task_lines(task_store)
@@ -368,6 +386,28 @@ async def _briefing_price_lines(
             continue
         lines.append(f"  {ticker}: ${price:,.2f}")
     return lines
+
+
+def _briefing_autonomous_lines(
+    store: AutonomousAlertStore, since: datetime, limit: int = 10
+) -> tuple[list[str], int]:
+    """Return formatted lines and total count for autonomous alerts after ``since``.
+
+    The store returns alerts newest-first; the briefing is capped at
+    ``limit`` entries with a trailing "... and N more" summary when the
+    overnight batch exceeds the cap.  The returned ``total`` is the count
+    of matching alerts *before* truncation, so callers can show the full
+    count in their section header.
+    """
+    alerts = store.get_since(since)
+    if not alerts:
+        return [], 0
+    shown = alerts[:limit]
+    lines = [f"  [{a.severity.value.upper()}] {a.summary}" for a in shown]
+    remainder = len(alerts) - len(shown)
+    if remainder > 0:
+        lines.append(f"  ... and {remainder} more")
+    return lines, len(alerts)
 
 
 def _briefing_alert_lines(alert_store: AlertStore, since: datetime) -> list[str]:
