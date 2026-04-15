@@ -35,7 +35,40 @@ On `qracer repl` startup, the CLI instantiates a file-backed `MemorySearcher` at
 
 ## MEMORY.md vs. Tier 2
 
-> **구현 예정** — MEMORY.md, BOOTSTRAP.md 기반 크로스 세션 메모리는 아직 구현되지 않았습니다.
-
 - **Tier 2**: auto-generated, per-session. Temporary working memory.
-- **MEMORY.md**: cross-session long-term memory. Manually curated or auto-aggregated. Contains active theses and strong multi-session signals. Loaded at session start via `BOOTSTRAP.md`.
+- **MEMORY.md**: cross-session long-term memory stored at `~/.qracer/MEMORY.md`. A machine-managed auto region (delimited by `<!-- BEGIN:auto -->` / `<!-- END:auto -->`) holds open theses and upcoming catalysts regenerated from `FactStore` after every thesis save; everything outside the auto region is user-curated free text and preserved verbatim across refreshes.
+- **BOOTSTRAP.md**: optional user-authored system prompt extension at `~/.qracer/BOOTSTRAP.md`. Loaded once at `ConversationEngine` init and injected as a `system` turn so preferences ("I'm a long-term value investor") reach the synthesizer without code changes.
+
+### MEMORY.md format
+
+```markdown
+# qracer MEMORY.md
+
+*Last updated: 2026-04-15T12:34:56+00:00*
+
+<!-- BEGIN:auto -->
+## Active Theses
+
+- **AAPL** (conviction 8/10): Long AAPL on AI tailwinds. Entry $175.00-$180.00, target $200.00, stop $165.00. Catalyst: AI revenue growth (Q2 2026).
+
+## Upcoming Catalysts
+
+- AAPL: AI revenue growth — Q2 2026
+
+<!-- END:auto -->
+
+## Watchpoints
+
+_(User-editable. Anything outside the auto block is preserved across refreshes.)_
+
+## User Preferences
+
+- Risk tolerance:
+- Preferred sectors:
+```
+
+### CLI commands
+
+- `memory show` — print the current MEMORY.md.
+- `memory refresh` — regenerate the auto region from `FactStore` (also happens automatically after each thesis save).
+- `memory edit` — open MEMORY.md in `$EDITOR` for hand-curation; the file is seeded on first use.

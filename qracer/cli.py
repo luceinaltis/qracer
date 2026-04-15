@@ -33,7 +33,7 @@ BANNER = """\
 ║  qracer — conversational alpha engine   ║
 ╚══════════════════════════════════════════╝
 Type your query, or 'quit' to exit.
-Commands: save, save json, save pdf, backtest, help
+Commands: save, save json, save pdf, memory, backtest, help
 """
 
 
@@ -351,6 +351,9 @@ Available commands:
   save              Save last analysis as Markdown
   save json         Save last analysis as JSON
   save pdf          Save last analysis as PDF (requires qracer[pdf] extra)
+  memory show       Display the current MEMORY.md cross-session memory file
+  memory refresh    Regenerate the auto region of MEMORY.md from the fact store
+  memory edit       Open MEMORY.md in $EDITOR (defaults to nano)
   backtest          Backtest the last trade thesis against historical data
   watchlist         Show watchlist with current prices
   watch TICKER      Add ticker to watchlist
@@ -385,6 +388,7 @@ async def _repl_loop(
     sessions_dir: Path | None = None,
     current_session: Path | None = None,
     fact_store: object | None = None,
+    memory_path: Path | None = None,
 ) -> None:
     """Run the interactive read-eval-print loop."""
     from qracer.alert_monitor import AlertMonitor
@@ -513,6 +517,19 @@ async def _repl_loop(
                 click.echo(f"Saved to {path}\n")
             else:
                 click.echo("No analysis to save. Run a query first.\n")
+            continue
+
+        # MEMORY.md commands
+        if cmd in ("memory", "memory show", "/memory", "/memory show"):
+            _handle_memory_show(memory_path)
+            continue
+
+        if cmd in ("memory refresh", "/memory refresh"):
+            _handle_memory_refresh(memory_path, fact_store, engine)
+            continue
+
+        if cmd in ("memory edit", "/memory edit"):
+            _handle_memory_edit(memory_path)
             continue
 
         # Watchlist commands
@@ -708,6 +725,76 @@ def _handle_remove_alert(user_input: str, monitor: object | None) -> None:
         click.echo(f"Alert {alert_id} removed.\n")
     else:
         click.echo(f"No alert found with ID {alert_id}.\n")
+
+
+# ---------------------------------------------------------------------------
+# MEMORY.md helpers
+# ---------------------------------------------------------------------------
+
+
+def _handle_memory_show(memory_path: Path | None) -> None:
+    """Print the current MEMORY.md file content (or a hint if absent)."""
+    if memory_path is None:
+        click.echo("MEMORY.md is not configured for this session.\n")
+        return
+    if not memory_path.exists():
+        click.echo(
+            f"MEMORY.md does not exist yet at {memory_path}.\n"
+            "Run 'memory refresh' to generate one from the fact store.\n"
+        )
+        return
+    try:
+        click.echo(memory_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        click.echo(f"Could not read MEMORY.md: {exc}\n")
+
+
+def _handle_memory_refresh(
+    memory_path: Path | None,
+    fact_store: object | None,
+    engine: object,
+) -> None:
+    """Regenerate the auto region of MEMORY.md from the fact store."""
+    from qracer.memory.fact_store import FactStore
+    from qracer.memory.memory_file import refresh_memory_file
+
+    if memory_path is None or not isinstance(fact_store, FactStore):
+        click.echo("MEMORY.md refresh is unavailable (no fact store configured).\n")
+        return
+    try:
+        doc = refresh_memory_file(memory_path, fact_store)
+    except Exception as exc:
+        click.echo(f"MEMORY.md refresh failed: {type(exc).__name__}: {exc}\n")
+        return
+    engine._memory_doc = doc  # type: ignore[attr-defined]
+    click.echo(f"✓ MEMORY.md refreshed at {memory_path}")
+    click.echo(f"  {doc.summary_line()}\n")
+
+
+def _handle_memory_edit(memory_path: Path | None) -> None:
+    """Open MEMORY.md in $EDITOR for ad-hoc curation."""
+    import subprocess
+
+    if memory_path is None:
+        click.echo("MEMORY.md is not configured for this session.\n")
+        return
+    memory_path.parent.mkdir(parents=True, exist_ok=True)
+    if not memory_path.exists():
+        # Seed the file so the editor opens on the canonical template.
+        from qracer.memory.memory_file import MemoryDocument, save_memory
+
+        save_memory(MemoryDocument(), memory_path)
+
+    editor = os.environ.get("EDITOR") or shutil.which("nano") or shutil.which("vi")
+    if not editor:
+        click.echo(
+            "No editor available. Set $EDITOR or install nano/vi to use 'memory edit'.\n"
+        )
+        return
+    try:
+        subprocess.call([editor, str(memory_path)])
+    except OSError as exc:
+        click.echo(f"Failed to launch editor: {exc}\n")
 
 
 def _show_watchlist(watchlist: object) -> None:
@@ -968,6 +1055,9 @@ def repl() -> None:
 
     task_store = TaskStore(_user_dir() / "tasks.json")
 
+    memory_path = _user_dir() / "MEMORY.md"
+    bootstrap_path = _user_dir() / "BOOTSTRAP.md"
+
     engine = ConversationEngine(
         llm_registry,
         data_registry,
@@ -979,7 +1069,12 @@ def repl() -> None:
         memory_searcher=memory_searcher,
         summaries_dir=summaries_dir,
         fact_store=fact_store,
+        memory_path=memory_path,
+        bootstrap_path=bootstrap_path,
     )
+
+    if engine.memory_document is not None:
+        click.echo(f"  ✓ {engine.memory_document.summary_line()}")
 
     task_executor = TaskExecutor(task_store, data_registry, llm_registry, engine=engine)
 
@@ -993,6 +1088,7 @@ def repl() -> None:
             sessions_dir=sessions_dir,
             current_session=session_logger.path,
             fact_store=fact_store,
+            memory_path=memory_path,
         )
     )
 

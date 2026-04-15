@@ -935,3 +935,151 @@ class TestFactExtraction:
             response = await engine.query("AAPL price")
 
         assert response.text  # Should produce a response without crashing
+
+
+# ---------------------------------------------------------------------------
+# MEMORY.md / BOOTSTRAP.md long-term memory
+# ---------------------------------------------------------------------------
+
+
+class TestLongTermMemory:
+    def test_bootstrap_seeds_system_message(self, tmp_path) -> None:
+        """BOOTSTRAP.md content should be prepended to history as a system
+        message before the first query so synthesizers can see it."""
+        bootstrap = tmp_path / "BOOTSTRAP.md"
+        bootstrap.write_text("Long-term value investor.", encoding="utf-8")
+
+        llm = _mock_llm_registry({})
+        engine = ConversationEngine(
+            llm, DataRegistry(), bootstrap_path=bootstrap
+        )
+
+        system_msgs = [h for h in engine.history if h["role"] == "system"]
+        assert any("Long-term value investor." in h["content"] for h in system_msgs)
+
+    def test_empty_bootstrap_not_injected(self, tmp_path) -> None:
+        """A missing BOOTSTRAP.md leaves history untouched."""
+        llm = _mock_llm_registry({})
+        engine = ConversationEngine(
+            llm, DataRegistry(), bootstrap_path=tmp_path / "absent.md"
+        )
+        assert engine.history == []
+
+    def test_memory_file_loaded_into_document(self, tmp_path) -> None:
+        """Pre-existing MEMORY.md is parsed and exposed via the property."""
+        from qracer.memory.memory_file import MemoryDocument, save_memory
+
+        path = tmp_path / "MEMORY.md"
+        save_memory(
+            MemoryDocument(
+                auto_theses=["**AAPL** (conviction 8/10): x."],
+                user_content="## Notes\n\nhi.",
+            ),
+            path,
+        )
+
+        llm = _mock_llm_registry({})
+        engine = ConversationEngine(llm, DataRegistry(), memory_path=path)
+
+        doc = engine.memory_document
+        assert doc is not None
+        assert doc.auto_theses == ["**AAPL** (conviction 8/10): x."]
+        assert "hi." in doc.user_content
+
+    def test_memory_with_theses_seeded_into_history(self, tmp_path) -> None:
+        """A non-empty MEMORY.md is injected as a system message so it
+        shows up in the synthesizer's context window."""
+        from qracer.memory.memory_file import MemoryDocument, save_memory
+
+        path = tmp_path / "MEMORY.md"
+        save_memory(
+            MemoryDocument(auto_theses=["**AAPL** (conviction 8/10): x."]),
+            path,
+        )
+
+        llm = _mock_llm_registry({})
+        engine = ConversationEngine(llm, DataRegistry(), memory_path=path)
+
+        system_msgs = [h for h in engine.history if h["role"] == "system"]
+        assert any("**AAPL**" in h["content"] for h in system_msgs)
+
+    def test_empty_memory_not_injected(self, tmp_path) -> None:
+        """A MEMORY.md with no auto entries should not leak the boilerplate
+        system message."""
+        llm = _mock_llm_registry({})
+        engine = ConversationEngine(
+            llm, DataRegistry(), memory_path=tmp_path / "absent.md"
+        )
+        # load_memory returns a default doc, but no auto content → no inject.
+        assert engine.history == []
+
+    async def test_memory_refreshed_after_thesis_persisted(
+        self, tmp_path
+    ) -> None:
+        """When a query persists a thesis, MEMORY.md's auto region should be
+        regenerated in place with the new thesis visible."""
+        from qracer.conversation.handlers import HandlerResult
+        from qracer.memory.fact_store import FactStore
+        from qracer.memory.memory_file import load_memory
+        from qracer.models.base import TradeThesis
+
+        fact_store = FactStore()
+        memory_path = tmp_path / "MEMORY.md"
+
+        intent_resp = json.dumps({"intent": "event_analysis", "tickers": ["AAPL"]})
+        llm = _mock_llm_registry(
+            {Role.RESEARCHER: intent_resp, Role.STRATEGIST: "Response"}
+        )
+        engine = ConversationEngine(
+            llm,
+            DataRegistry(),
+            fact_store=fact_store,
+            memory_path=memory_path,
+        )
+
+        thesis = TradeThesis(
+            ticker="AAPL",
+            entry_zone=(170.0, 175.0),
+            target_price=200.0,
+            stop_loss=160.0,
+            risk_reward_ratio=2.4,
+            catalyst="AI revenue",
+            catalyst_date="Q2 2026",
+            conviction=8,
+            summary="Long AAPL on AI",
+        )
+        analysis = AnalysisResult(
+            results=[_ok_result("price_event")],
+            confidence=0.9,
+            iterations=1,
+            trade_thesis=thesis,
+        )
+        with patch.object(
+            engine._standard_handler, "handle", new=AsyncMock()
+        ) as mh:
+            mh.return_value = HandlerResult(text="Response", analysis=analysis)
+            await engine.query("Analyze AAPL")
+
+        assert memory_path.exists()
+        doc_on_disk = load_memory(memory_path)
+        assert any("AAPL" in line for line in doc_on_disk.auto_theses)
+        # Engine's cached doc should also reflect the refresh.
+        assert engine.memory_document is not None
+        assert any("AAPL" in line for line in engine.memory_document.auto_theses)
+
+        fact_store.close()
+
+    def test_malformed_memory_file_does_not_crash_init(
+        self, tmp_path
+    ) -> None:
+        """Broken MEMORY.md must not prevent engine construction."""
+        path = tmp_path / "MEMORY.md"
+        path.write_bytes(b"\x00\x01\x02 not valid utf-8 anywhere \xff\xfe")
+
+        llm = _mock_llm_registry({})
+        # Should not raise; the engine falls back to an empty doc / no doc.
+        engine = ConversationEngine(llm, DataRegistry(), memory_path=path)
+        # Either None (OSError path) or a default MemoryDocument (parse path)
+        # — both are acceptable; crashing is not.
+        doc = engine.memory_document
+        assert doc is None or doc.auto_theses == []
