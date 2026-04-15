@@ -7,11 +7,14 @@ inside the ``Server`` tick loop alongside AlertMonitor and TaskExecutor.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from qracer.data.providers import NewsProvider, PriceProvider
@@ -229,3 +232,143 @@ class AutonomousMonitor:
     def _set_cooldown(self, ticker: str) -> None:
         """Record the current time as the last alert for *ticker*."""
         self._cooldowns[ticker] = time.monotonic()
+
+
+class AutonomousAlertStore:
+    """File-backed storage for triggered autonomous alerts.
+
+    Persists every :class:`AutonomousAlert` produced by
+    :class:`AutonomousMonitor` so overnight findings can be surfaced on the
+    next :command:`qracer repl` start via the session briefing.
+
+    Usage::
+
+        store = AutonomousAlertStore(Path("~/.qracer/autonomous_alerts.json"))
+        store.save(alert)
+        overnight = store.get_since(last_session)
+    """
+
+    # Keep the on-disk file bounded so a long-running ``qracer serve`` doesn't
+    # grow the log indefinitely.  New alerts push the oldest ones out once the
+    # cap is reached.
+    MAX_ALERTS = 500
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._mtime: float = 0.0
+        self._alerts: list[AutonomousAlert] = self._load()
+
+    @property
+    def alerts(self) -> list[AutonomousAlert]:
+        """Return a copy of all persisted alerts."""
+        self._maybe_reload()
+        return list(self._alerts)
+
+    def save(self, alert: AutonomousAlert) -> None:
+        """Append *alert* to the store and flush to disk."""
+        self._maybe_reload()
+        self._alerts.append(alert)
+        if len(self._alerts) > self.MAX_ALERTS:
+            # Drop the oldest entries; ``created_at`` is monotonic per-process.
+            self._alerts = self._alerts[-self.MAX_ALERTS :]
+        self._save()
+
+    def get_since(self, since: datetime) -> list[AutonomousAlert]:
+        """Return alerts with ``created_at`` strictly after *since*.
+
+        Alerts with a malformed or missing timestamp are skipped.  The
+        returned list is ordered newest first, mirroring briefing output.
+        """
+        self._maybe_reload()
+        out: list[tuple[datetime, AutonomousAlert]] = []
+        for alert in self._alerts:
+            dt = _parse_isoformat(alert.created_at)
+            if dt is None:
+                continue
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if dt > since:
+                out.append((dt, alert))
+        out.sort(key=lambda item: item[0], reverse=True)
+        return [alert for _, alert in out]
+
+    def clear(self) -> None:
+        """Remove all persisted alerts."""
+        self._alerts.clear()
+        self._save()
+
+    def __len__(self) -> int:
+        return len(self._alerts)
+
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+
+    def _maybe_reload(self) -> None:
+        """Re-read from disk if another process modified the file."""
+        if not self._path.exists():
+            return
+        try:
+            current_mtime = self._path.stat().st_mtime
+        except OSError:
+            return
+        if current_mtime != self._mtime:
+            self._alerts = self._load()
+
+    def _load(self) -> list[AutonomousAlert]:
+        if not self._path.exists():
+            return []
+        try:
+            raw = json.loads(self._path.read_text(encoding="utf-8"))
+            self._mtime = self._path.stat().st_mtime
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Failed to load autonomous alerts from %s", self._path)
+            return []
+        if not isinstance(raw, list):
+            return []
+        out: list[AutonomousAlert] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            try:
+                out.append(self._deserialize(item))
+            except (KeyError, ValueError):
+                logger.debug("Skipping malformed autonomous alert record: %r", item)
+        return out
+
+    def _save(self) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        payload = [self._serialize(a) for a in self._alerts]
+        self._path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        try:
+            self._mtime = self._path.stat().st_mtime
+        except OSError:
+            self._mtime = 0.0
+
+    @staticmethod
+    def _serialize(alert: AutonomousAlert) -> dict[str, Any]:
+        d = asdict(alert)
+        d["trigger_type"] = alert.trigger_type.value
+        d["severity"] = alert.severity.value
+        return d
+
+    @staticmethod
+    def _deserialize(data: dict[str, Any]) -> AutonomousAlert:
+        return AutonomousAlert(
+            ticker=str(data["ticker"]),
+            trigger_type=TriggerType(data["trigger_type"]),
+            summary=str(data["summary"]),
+            severity=Severity(data["severity"]),
+            data=dict(data.get("data", {}) or {}),
+            created_at=str(data.get("created_at", "")),
+        )
+
+
+def _parse_isoformat(value: str) -> datetime | None:
+    """Return ``datetime.fromisoformat(value)`` or ``None`` on failure."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None

@@ -12,7 +12,7 @@ import time
 
 from qracer.alert_monitor import AlertMonitor
 from qracer.alerts import AlertCondition
-from qracer.autonomous import AutonomousMonitor
+from qracer.autonomous import AutonomousAlertStore, AutonomousMonitor
 from qracer.notifications.providers import Notification, NotificationCategory
 from qracer.notifications.registry import NotificationRegistry
 from qracer.notifications.telegram_poller import BotCommand, TelegramBotPoller
@@ -39,12 +39,14 @@ class Server:
         notifications: NotificationRegistry | None = None,
         *,
         autonomous_monitor: AutonomousMonitor | None = None,
+        autonomous_alert_store: AutonomousAlertStore | None = None,
         telegram_poller: TelegramBotPoller | None = None,
         tick_interval: float = 1.0,
     ) -> None:
         self._alert_monitor = alert_monitor
         self._task_executor = task_executor
         self._autonomous_monitor = autonomous_monitor
+        self._autonomous_alert_store = autonomous_alert_store
         self._notifications = notifications or NotificationRegistry()
         self._telegram_poller = telegram_poller
         self._tick_interval = tick_interval
@@ -104,6 +106,13 @@ class Server:
                 auto_alerts = await self._autonomous_monitor.check()
                 for alert in auto_alerts:
                     logger.info("Autonomous alert: %s", alert.summary)
+                    if self._autonomous_alert_store is not None:
+                        try:
+                            self._autonomous_alert_store.save(alert)
+                        except Exception:
+                            # Persistence failure shouldn't block the alert
+                            # from being delivered — log and continue.
+                            logger.debug("Failed to persist autonomous alert", exc_info=True)
                     await self._notify(
                         NotificationCategory.AUTONOMOUS_MODE,
                         f"[{alert.severity.value.upper()}] {alert.ticker}",

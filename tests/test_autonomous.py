@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -10,6 +10,7 @@ import pytest
 
 from qracer.autonomous import (
     AutonomousAlert,
+    AutonomousAlertStore,
     AutonomousMonitor,
     Severity,
     TriggerType,
@@ -442,3 +443,134 @@ class TestAutonomousAlert:
         assert alert.severity == Severity.CRITICAL
         assert alert.data["pct_change"] == 5.0
         assert alert.created_at  # has a timestamp
+
+
+# ---------------------------------------------------------------------------
+# AutonomousAlertStore
+# ---------------------------------------------------------------------------
+
+
+def _alert(
+    ticker: str = "AAPL",
+    *,
+    summary: str = "moved",
+    severity: Severity = Severity.INFO,
+    trigger_type: TriggerType = TriggerType.PRICE_MOVE,
+    created_at: str | None = None,
+    data: dict | None = None,
+) -> AutonomousAlert:
+    """Build an AutonomousAlert with optional overrides for timestamp/data."""
+    kwargs: dict = {
+        "ticker": ticker,
+        "trigger_type": trigger_type,
+        "summary": summary,
+        "severity": severity,
+        "data": data or {},
+    }
+    if created_at is not None:
+        kwargs["created_at"] = created_at
+    return AutonomousAlert(**kwargs)
+
+
+class TestAutonomousAlertStore:
+    def test_save_and_roundtrip(self, tmp_path) -> None:
+        store = AutonomousAlertStore(tmp_path / "auto.json")
+        alert = _alert("AAPL", summary="AAPL up 5%", severity=Severity.CRITICAL)
+        store.save(alert)
+
+        reloaded = AutonomousAlertStore(tmp_path / "auto.json")
+        assert len(reloaded) == 1
+        restored = reloaded.alerts[0]
+        assert restored.ticker == "AAPL"
+        assert restored.summary == "AAPL up 5%"
+        assert restored.severity is Severity.CRITICAL
+        assert restored.trigger_type is TriggerType.PRICE_MOVE
+
+    def test_get_since_filters_by_timestamp(self, tmp_path) -> None:
+        store = AutonomousAlertStore(tmp_path / "auto.json")
+        now = datetime.now(timezone.utc)
+        old = _alert(
+            "OLD",
+            summary="old alert",
+            created_at=(now - timedelta(days=1)).isoformat(),
+        )
+        recent = _alert(
+            "NEW",
+            summary="recent alert",
+            created_at=(now - timedelta(minutes=5)).isoformat(),
+        )
+        store.save(old)
+        store.save(recent)
+
+        since = now - timedelta(hours=1)
+        results = store.get_since(since)
+        assert len(results) == 1
+        assert results[0].ticker == "NEW"
+
+    def test_get_since_orders_newest_first(self, tmp_path) -> None:
+        store = AutonomousAlertStore(tmp_path / "auto.json")
+        now = datetime.now(timezone.utc)
+        oldest = _alert("A", summary="first", created_at=(now - timedelta(minutes=30)).isoformat())
+        middle = _alert("B", summary="second", created_at=(now - timedelta(minutes=20)).isoformat())
+        newest = _alert("C", summary="third", created_at=(now - timedelta(minutes=10)).isoformat())
+        # Save out of order to verify the store sorts on retrieval.
+        store.save(middle)
+        store.save(oldest)
+        store.save(newest)
+
+        results = store.get_since(now - timedelta(hours=1))
+        assert [a.ticker for a in results] == ["C", "B", "A"]
+
+    def test_get_since_skips_malformed_timestamp(self, tmp_path) -> None:
+        store = AutonomousAlertStore(tmp_path / "auto.json")
+        store.save(_alert("BAD", created_at="not-a-date"))
+        store.save(_alert("GOOD"))
+
+        results = store.get_since(datetime.now(timezone.utc) - timedelta(hours=1))
+        tickers = {a.ticker for a in results}
+        assert "GOOD" in tickers
+        assert "BAD" not in tickers
+
+    def test_max_alerts_cap(self, tmp_path) -> None:
+        store = AutonomousAlertStore(tmp_path / "auto.json")
+        store.MAX_ALERTS = 3  # type: ignore[misc]  # override for the test
+        for i in range(5):
+            store.save(_alert(f"T{i}"))
+
+        tickers = [a.ticker for a in store.alerts]
+        assert tickers == ["T2", "T3", "T4"]
+
+    def test_clear(self, tmp_path) -> None:
+        store = AutonomousAlertStore(tmp_path / "auto.json")
+        store.save(_alert())
+        store.save(_alert())
+        store.clear()
+        assert len(store) == 0
+        # Clear is persisted.
+        reloaded = AutonomousAlertStore(tmp_path / "auto.json")
+        assert len(reloaded) == 0
+
+    def test_load_handles_missing_file(self, tmp_path) -> None:
+        store = AutonomousAlertStore(tmp_path / "missing.json")
+        assert len(store) == 0
+        assert store.get_since(datetime.now(timezone.utc)) == []
+
+    def test_load_handles_malformed_file(self, tmp_path) -> None:
+        path = tmp_path / "auto.json"
+        path.write_text("not valid json", encoding="utf-8")
+        store = AutonomousAlertStore(path)
+        assert len(store) == 0
+
+    def test_load_skips_malformed_entries(self, tmp_path) -> None:
+        path = tmp_path / "auto.json"
+        # One valid and one invalid entry — the valid one should still load.
+        path.write_text(
+            '[{"ticker": "OK", "trigger_type": "price_move", '
+            '"summary": "ok", "severity": "info", "data": {}, '
+            '"created_at": "2026-04-01T00:00:00+00:00"}, '
+            '{"ticker": "BAD"}]',
+            encoding="utf-8",
+        )
+        store = AutonomousAlertStore(path)
+        assert len(store) == 1
+        assert store.alerts[0].ticker == "OK"

@@ -8,6 +8,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from qracer.alerts import AlertCondition, AlertStore
+from qracer.autonomous import (
+    AutonomousAlert,
+    AutonomousAlertStore,
+    Severity,
+    TriggerType,
+)
 from qracer.conversation.intent import Intent, IntentType
 from qracer.conversation.quickpath import format_quickpath, generate_briefing
 from qracer.data.providers import PriceProvider
@@ -374,3 +380,101 @@ class TestGenerateBriefing:
         assert result is not None
         assert "Pending Tasks (7)" in result
         assert "and 2 more" in result
+
+    async def test_includes_overnight_autonomous_findings(self, tmp_path: Path) -> None:
+        sessions_dir = tmp_path / "sessions"
+        _make_previous_session(sessions_dir)
+        watchlist = Watchlist(tmp_path / "watchlist.json")
+        registry = _make_price_registry({})
+        alert_store = AlertStore(tmp_path / "alerts.json")
+        task_store = TaskStore(tmp_path / "tasks.json")
+        autonomous_store = AutonomousAlertStore(tmp_path / "autonomous.json")
+
+        # Recent alert — created_at defaults to now(UTC) which is after the
+        # previous session's (now-1h) mtime.
+        autonomous_store.save(
+            AutonomousAlert(
+                ticker="AAPL",
+                trigger_type=TriggerType.PRICE_MOVE,
+                summary="AAPL moved up 5.0% ($200.00 -> $210.00)",
+                severity=Severity.CRITICAL,
+            )
+        )
+        # Stale alert pre-dating the session — must be filtered out.
+        autonomous_store.save(
+            AutonomousAlert(
+                ticker="TSLA",
+                trigger_type=TriggerType.BREAKING_NEWS,
+                summary="Old news about TSLA",
+                severity=Severity.INFO,
+                created_at=(datetime.now(timezone.utc) - timedelta(days=2)).isoformat(),
+            )
+        )
+
+        result = await generate_briefing(
+            watchlist,
+            registry,
+            alert_store,
+            task_store,
+            sessions_dir,
+            autonomous_alert_store=autonomous_store,
+        )
+        assert result is not None
+        assert "Overnight Autonomous Findings (1)" in result
+        assert "[CRITICAL]" in result
+        assert "AAPL moved up 5.0%" in result
+        assert "Old news about TSLA" not in result
+
+    async def test_autonomous_findings_truncated_over_limit(self, tmp_path: Path) -> None:
+        sessions_dir = tmp_path / "sessions"
+        _make_previous_session(sessions_dir)
+        watchlist = Watchlist(tmp_path / "watchlist.json")
+        registry = _make_price_registry({})
+        alert_store = AlertStore(tmp_path / "alerts.json")
+        task_store = TaskStore(tmp_path / "tasks.json")
+        autonomous_store = AutonomousAlertStore(tmp_path / "autonomous.json")
+
+        for i in range(13):
+            autonomous_store.save(
+                AutonomousAlert(
+                    ticker=f"T{i}",
+                    trigger_type=TriggerType.PRICE_MOVE,
+                    summary=f"T{i} moved up {i}%",
+                    severity=Severity.INFO,
+                )
+            )
+
+        result = await generate_briefing(
+            watchlist,
+            registry,
+            alert_store,
+            task_store,
+            sessions_dir,
+            autonomous_alert_store=autonomous_store,
+        )
+        assert result is not None
+        assert "Overnight Autonomous Findings (13)" in result
+        assert "and 3 more" in result
+
+    async def test_autonomous_findings_none_when_store_empty(self, tmp_path: Path) -> None:
+        sessions_dir = tmp_path / "sessions"
+        _make_previous_session(sessions_dir)
+        watchlist = Watchlist(tmp_path / "watchlist.json")
+        watchlist.add("AAPL")
+        registry = _make_price_registry({"AAPL": 100.0})
+        alert_store = AlertStore(tmp_path / "alerts.json")
+        task_store = TaskStore(tmp_path / "tasks.json")
+        autonomous_store = AutonomousAlertStore(tmp_path / "autonomous.json")
+
+        result = await generate_briefing(
+            watchlist,
+            registry,
+            alert_store,
+            task_store,
+            sessions_dir,
+            autonomous_alert_store=autonomous_store,
+        )
+        assert result is not None
+        # Briefing still rendered (watchlist is non-empty) but the
+        # autonomous section is omitted entirely.
+        assert "Overnight Autonomous Findings" not in result
