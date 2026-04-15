@@ -446,9 +446,7 @@ async def risk_check(
         )
 
 
-def _structured_lookup(
-    fact_store: FactStore, tickers: list[str]
-) -> dict[str, Any]:
+def _structured_lookup(fact_store: FactStore, tickers: list[str]) -> dict[str, Any]:
     """Fetch structured theses and findings for *tickers* from the fact store.
 
     Findings lookup is gated on ``hasattr`` so the pipeline stays compatible
@@ -490,9 +488,7 @@ def _structured_lookup(
                 raw_findings: Any = get_findings(ticker)
                 ticker_findings: list[Any] = list(raw_findings or [])
             except Exception:
-                logger.debug(
-                    "fact_store.get_findings failed for %s", ticker, exc_info=True
-                )
+                logger.debug("fact_store.get_findings failed for %s", ticker, exc_info=True)
                 continue
             for f in ticker_findings:
                 findings.append(

@@ -75,16 +75,12 @@ class TestInvokeTool:
         """Dispatcher should pass fact_store + intent.tickers into memory_search."""
         from qracer.memory.fact_store import FactStore
 
-        intent = Intent(
-            IntentType.FOLLOW_UP, tickers=["AAPL"], raw_query="how's AAPL doing?"
-        )
+        intent = Intent(IntentType.FOLLOW_UP, tickers=["AAPL"], raw_query="how's AAPL doing?")
         registry = DataRegistry()
         store = FactStore()
         try:
             with patch("qracer.conversation.dispatcher.pipeline") as mock_pipeline:
-                mock_pipeline.memory_search = AsyncMock(
-                    return_value=_ok_result("memory_search")
-                )
+                mock_pipeline.memory_search = AsyncMock(return_value=_ok_result("memory_search"))
                 await invoke_tool("memory_search", intent, registry, fact_store=store)
                 mock_pipeline.memory_search.assert_called_once_with(
                     "how's AAPL doing?",
