@@ -143,9 +143,7 @@ class Server:
             logger.exception("Bot command handler failed: /%s", command.action)
             reply = f"Error handling /{command.action}: {exc}"
         if reply and self._telegram_poller is not None:
-            await self._telegram_poller.send_reply(
-                reply, chat_id=command.chat_id or None
-            )
+            await self._telegram_poller.send_reply(reply, chat_id=command.chat_id or None)
 
     async def _dispatch_bot_command(self, command: BotCommand) -> str:
         """Route a :class:`BotCommand` to the matching handler.
@@ -270,11 +268,7 @@ class Server:
 
     async def _cmd_briefing(self) -> str:
         """Compose a session-start-style briefing from current state."""
-        if (
-            self._watchlist is None
-            or self._data_registry is None
-            or self._sessions_dir is None
-        ):
+        if self._watchlist is None or self._data_registry is None or self._sessions_dir is None:
             return (
                 "Briefing unavailable in this mode. "
                 "Run `qracer repl` on the host for session-start briefings."
@@ -348,9 +342,7 @@ class Server:
             summary = _extract_thesis_section(path)
             if summary is None:
                 continue
-            when = time.strftime(
-                "%Y-%m-%d %H:%M", time.localtime(path.stat().st_mtime)
-            )
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(path.stat().st_mtime))
             entries.append(f"[{when}] {path.name}\n{summary}")
 
         if not entries:

@@ -347,9 +347,7 @@ class TestAllowedChatIds:
         assert poller.allowed_chat_ids == ("999",)
 
     def test_primary_always_authorised(self) -> None:
-        poller = TelegramBotPoller(
-            bot_token="tok", chat_id="999", allowed_chat_ids=["1"]
-        )
+        poller = TelegramBotPoller(bot_token="tok", chat_id="999", allowed_chat_ids=["1"])
         assert "999" in poller.allowed_chat_ids
         assert "1" in poller.allowed_chat_ids
 
@@ -360,9 +358,7 @@ class TestAllowedChatIds:
         assert poller.allowed_chat_ids == ("999", "1")
 
     def test_blank_entries_dropped(self) -> None:
-        poller = TelegramBotPoller(
-            bot_token="tok", chat_id="999", allowed_chat_ids=["", "  ", "1"]
-        )
+        poller = TelegramBotPoller(bot_token="tok", chat_id="999", allowed_chat_ids=["", "  ", "1"])
         assert poller.allowed_chat_ids == ("999", "1")
 
     async def test_poll_accepts_secondary_chat(self) -> None:
@@ -451,15 +447,11 @@ class TestAllowedChatIds:
 class TestRateLimit:
     def test_rate_limit_commands_must_be_non_negative(self) -> None:
         with pytest.raises(ValueError, match="rate_limit_commands"):
-            TelegramBotPoller(
-                bot_token="tok", chat_id="999", rate_limit_commands=-1
-            )
+            TelegramBotPoller(bot_token="tok", chat_id="999", rate_limit_commands=-1)
 
     def test_rate_limit_window_must_be_positive(self) -> None:
         with pytest.raises(ValueError, match="rate_limit_window_seconds"):
-            TelegramBotPoller(
-                bot_token="tok", chat_id="999", rate_limit_window_seconds=0
-            )
+            TelegramBotPoller(bot_token="tok", chat_id="999", rate_limit_window_seconds=0)
 
     async def test_poll_drops_commands_over_limit(self) -> None:
         poller = TelegramBotPoller(

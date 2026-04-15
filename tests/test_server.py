@@ -409,9 +409,7 @@ class TestNewBotCommands:
 
     async def test_briefing_missing_deps_returns_hint(self) -> None:
         server = self._server()
-        out = await server._dispatch_bot_command(
-            BotCommand("briefing", [], "/briefing")
-        )
+        out = await server._dispatch_bot_command(BotCommand("briefing", [], "/briefing"))
         assert "Briefing unavailable" in out
 
     async def test_briefing_no_prior_session_returns_hint(self, tmp_path) -> None:
@@ -424,12 +422,8 @@ class TestNewBotCommands:
             data_registry=data_registry,
             sessions_dir=tmp_path,
         )
-        with patch.object(
-            server_mod, "generate_briefing", AsyncMock(return_value=None)
-        ):
-            out = await server._dispatch_bot_command(
-                BotCommand("briefing", [], "/briefing")
-            )
+        with patch.object(server_mod, "generate_briefing", AsyncMock(return_value=None)):
+            out = await server._dispatch_bot_command(BotCommand("briefing", [], "/briefing"))
         assert "No briefing" in out
 
     async def test_briefing_returns_briefing_text(self, tmp_path) -> None:
@@ -447,9 +441,7 @@ class TestNewBotCommands:
             "generate_briefing",
             AsyncMock(return_value="Session Briefing\n  AAPL: $200"),
         ):
-            out = await server._dispatch_bot_command(
-                BotCommand("briefing", [], "/briefing")
-            )
+            out = await server._dispatch_bot_command(BotCommand("briefing", [], "/briefing"))
         assert "Session Briefing" in out
         assert "AAPL" in out
 
@@ -468,36 +460,28 @@ class TestNewBotCommands:
             "generate_briefing",
             AsyncMock(side_effect=RuntimeError("boom")),
         ):
-            out = await server._dispatch_bot_command(
-                BotCommand("briefing", [], "/briefing")
-            )
+            out = await server._dispatch_bot_command(BotCommand("briefing", [], "/briefing"))
         assert "Briefing failed" in out
 
     # ---- /watchlist ----
 
     async def test_watchlist_unconfigured(self) -> None:
         server = self._server()
-        out = await server._dispatch_bot_command(
-            BotCommand("watchlist", [], "/watchlist")
-        )
+        out = await server._dispatch_bot_command(BotCommand("watchlist", [], "/watchlist"))
         assert "unavailable" in out.lower()
 
     async def test_watchlist_empty(self) -> None:
         watchlist = MagicMock()
         watchlist.tickers = []
         server = self._server(watchlist=watchlist)
-        out = await server._dispatch_bot_command(
-            BotCommand("watchlist", [], "/watchlist")
-        )
+        out = await server._dispatch_bot_command(BotCommand("watchlist", [], "/watchlist"))
         assert "empty" in out.lower()
 
     async def test_watchlist_no_data_registry_shows_tickers_only(self) -> None:
         watchlist = MagicMock()
         watchlist.tickers = ["AAPL", "NVDA"]
         server = self._server(watchlist=watchlist)
-        out = await server._dispatch_bot_command(
-            BotCommand("watchlist", [], "/watchlist")
-        )
+        out = await server._dispatch_bot_command(BotCommand("watchlist", [], "/watchlist"))
         assert "AAPL" in out
         assert "NVDA" in out
         assert "$" not in out  # no price data
@@ -506,13 +490,9 @@ class TestNewBotCommands:
         watchlist = MagicMock()
         watchlist.tickers = ["AAPL", "NVDA"]
         data_registry = MagicMock()
-        data_registry.async_get_with_fallback = AsyncMock(
-            side_effect=[200.0, 1250.5]
-        )
+        data_registry.async_get_with_fallback = AsyncMock(side_effect=[200.0, 1250.5])
         server = self._server(watchlist=watchlist, data_registry=data_registry)
-        out = await server._dispatch_bot_command(
-            BotCommand("watchlist", [], "/watchlist")
-        )
+        out = await server._dispatch_bot_command(BotCommand("watchlist", [], "/watchlist"))
         assert "AAPL: $200.00" in out
         assert "NVDA: $1,250.50" in out
 
@@ -524,9 +504,7 @@ class TestNewBotCommands:
             side_effect=[200.0, RuntimeError("no feed")]
         )
         server = self._server(watchlist=watchlist, data_registry=data_registry)
-        out = await server._dispatch_bot_command(
-            BotCommand("watchlist", [], "/watchlist")
-        )
+        out = await server._dispatch_bot_command(BotCommand("watchlist", [], "/watchlist"))
         assert "AAPL: $200.00" in out
         assert "BAD: price unavailable" in out
 
@@ -536,35 +514,25 @@ class TestNewBotCommands:
         data_registry = MagicMock()
         data_registry.async_get_with_fallback = AsyncMock(return_value=None)
         server = self._server(watchlist=watchlist, data_registry=data_registry)
-        out = await server._dispatch_bot_command(
-            BotCommand("watchlist", [], "/watchlist")
-        )
+        out = await server._dispatch_bot_command(BotCommand("watchlist", [], "/watchlist"))
         assert "FOO: price unavailable" in out
 
     # ---- /thesis ----
 
     async def test_thesis_no_reports_dir(self) -> None:
         server = self._server()
-        out = await server._dispatch_bot_command(
-            BotCommand("thesis", [], "/thesis")
-        )
+        out = await server._dispatch_bot_command(BotCommand("thesis", [], "/thesis"))
         assert "No saved theses" in out
 
     async def test_thesis_empty_reports_dir(self, tmp_path) -> None:
         server = self._server(reports_dir=tmp_path)
-        out = await server._dispatch_bot_command(
-            BotCommand("thesis", [], "/thesis")
-        )
+        out = await server._dispatch_bot_command(BotCommand("thesis", [], "/thesis"))
         assert "No saved theses" in out
 
-    async def test_thesis_skips_reports_without_thesis_section(
-        self, tmp_path
-    ) -> None:
+    async def test_thesis_skips_reports_without_thesis_section(self, tmp_path) -> None:
         (tmp_path / "notes.md").write_text("# Hello\n\nJust a note.\n")
         server = self._server(reports_dir=tmp_path)
-        out = await server._dispatch_bot_command(
-            BotCommand("thesis", [], "/thesis")
-        )
+        out = await server._dispatch_bot_command(BotCommand("thesis", [], "/thesis"))
         assert "No saved theses" in out
 
     async def test_thesis_lists_recent_saved_reports(self, tmp_path) -> None:
@@ -582,9 +550,7 @@ class TestNewBotCommands:
             "## Data Sources\n\n- news\n"
         )
         server = self._server(reports_dir=tmp_path)
-        out = await server._dispatch_bot_command(
-            BotCommand("thesis", [], "/thesis")
-        )
+        out = await server._dispatch_bot_command(BotCommand("thesis", [], "/thesis"))
         assert "Recent theses" in out
         assert "AAPL-2026-04-15.md" in out
         assert "Entry Zone" in out
@@ -594,9 +560,7 @@ class TestNewBotCommands:
     async def test_thesis_caps_at_three_entries(self, tmp_path) -> None:
         import time as _t
 
-        body = (
-            "# Report\n\n## Trade Thesis\n\nSome thesis body.\n\n---\n"
-        )
+        body = "# Report\n\n## Trade Thesis\n\nSome thesis body.\n\n---\n"
         for i in range(5):
             p = tmp_path / f"T{i}.md"
             p.write_text(body)
@@ -608,9 +572,7 @@ class TestNewBotCommands:
             _ = _t  # silence unused-import in case of future refactors
 
         server = self._server(reports_dir=tmp_path)
-        out = await server._dispatch_bot_command(
-            BotCommand("thesis", [], "/thesis")
-        )
+        out = await server._dispatch_bot_command(BotCommand("thesis", [], "/thesis"))
         # Three most-recent (T4, T3, T2), oldest two excluded.
         assert "T4.md" in out
         assert "T3.md" in out

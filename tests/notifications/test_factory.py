@@ -43,9 +43,7 @@ class TestBuildTelegramPoller:
         assert build_telegram_poller({"TELEGRAM_BOT_TOKEN": "tok"}) is None
 
     def test_primary_chat_authorised_by_default(self):
-        poller = build_telegram_poller(
-            {"TELEGRAM_BOT_TOKEN": "tok", "TELEGRAM_CHAT_ID": "1"}
-        )
+        poller = build_telegram_poller({"TELEGRAM_BOT_TOKEN": "tok", "TELEGRAM_CHAT_ID": "1"})
         assert poller is not None
         assert poller.allowed_chat_ids == ("1",)
 
