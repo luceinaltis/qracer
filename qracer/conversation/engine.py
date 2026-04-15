@@ -393,9 +393,7 @@ class ConversationEngine:
             ):
                 from qracer.memory.memory_file import render_memory
 
-                self._history.append(
-                    {"role": "system", "content": render_memory(self._memory_doc)}
-                )
+                self._history.append({"role": "system", "content": render_memory(self._memory_doc)})
 
     def _refresh_memory_file(self) -> None:
         """Regenerate the MEMORY.md auto region from the fact store.

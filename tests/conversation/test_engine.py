@@ -950,9 +950,7 @@ class TestLongTermMemory:
         bootstrap.write_text("Long-term value investor.", encoding="utf-8")
 
         llm = _mock_llm_registry({})
-        engine = ConversationEngine(
-            llm, DataRegistry(), bootstrap_path=bootstrap
-        )
+        engine = ConversationEngine(llm, DataRegistry(), bootstrap_path=bootstrap)
 
         system_msgs = [h for h in engine.history if h["role"] == "system"]
         assert any("Long-term value investor." in h["content"] for h in system_msgs)
@@ -960,9 +958,7 @@ class TestLongTermMemory:
     def test_empty_bootstrap_not_injected(self, tmp_path) -> None:
         """A missing BOOTSTRAP.md leaves history untouched."""
         llm = _mock_llm_registry({})
-        engine = ConversationEngine(
-            llm, DataRegistry(), bootstrap_path=tmp_path / "absent.md"
-        )
+        engine = ConversationEngine(llm, DataRegistry(), bootstrap_path=tmp_path / "absent.md")
         assert engine.history == []
 
     def test_memory_file_loaded_into_document(self, tmp_path) -> None:
@@ -1007,15 +1003,11 @@ class TestLongTermMemory:
         """A MEMORY.md with no auto entries should not leak the boilerplate
         system message."""
         llm = _mock_llm_registry({})
-        engine = ConversationEngine(
-            llm, DataRegistry(), memory_path=tmp_path / "absent.md"
-        )
+        engine = ConversationEngine(llm, DataRegistry(), memory_path=tmp_path / "absent.md")
         # load_memory returns a default doc, but no auto content → no inject.
         assert engine.history == []
 
-    async def test_memory_refreshed_after_thesis_persisted(
-        self, tmp_path
-    ) -> None:
+    async def test_memory_refreshed_after_thesis_persisted(self, tmp_path) -> None:
         """When a query persists a thesis, MEMORY.md's auto region should be
         regenerated in place with the new thesis visible."""
         from qracer.conversation.handlers import HandlerResult
@@ -1027,9 +1019,7 @@ class TestLongTermMemory:
         memory_path = tmp_path / "MEMORY.md"
 
         intent_resp = json.dumps({"intent": "event_analysis", "tickers": ["AAPL"]})
-        llm = _mock_llm_registry(
-            {Role.RESEARCHER: intent_resp, Role.STRATEGIST: "Response"}
-        )
+        llm = _mock_llm_registry({Role.RESEARCHER: intent_resp, Role.STRATEGIST: "Response"})
         engine = ConversationEngine(
             llm,
             DataRegistry(),
@@ -1054,9 +1044,7 @@ class TestLongTermMemory:
             iterations=1,
             trade_thesis=thesis,
         )
-        with patch.object(
-            engine._standard_handler, "handle", new=AsyncMock()
-        ) as mh:
+        with patch.object(engine._standard_handler, "handle", new=AsyncMock()) as mh:
             mh.return_value = HandlerResult(text="Response", analysis=analysis)
             await engine.query("Analyze AAPL")
 
@@ -1069,9 +1057,7 @@ class TestLongTermMemory:
 
         fact_store.close()
 
-    def test_malformed_memory_file_does_not_crash_init(
-        self, tmp_path
-    ) -> None:
+    def test_malformed_memory_file_does_not_crash_init(self, tmp_path) -> None:
         """Broken MEMORY.md must not prevent engine construction."""
         path = tmp_path / "MEMORY.md"
         path.write_bytes(b"\x00\x01\x02 not valid utf-8 anywhere \xff\xfe")

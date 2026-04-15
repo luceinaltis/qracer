@@ -87,9 +87,7 @@ class MemoryDocument:
     auto_theses: list[str] = field(default_factory=list)
     auto_catalysts: list[str] = field(default_factory=list)
     user_content: str = _DEFAULT_USER_CONTENT
-    last_updated: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def summary_line(self) -> str:
         """One-line summary for session briefings / status output."""
@@ -295,9 +293,7 @@ def refresh_memory_file(
 ) -> MemoryDocument:
     """Convenience: load MEMORY.md, refresh auto sections, write back."""
     current = load_memory(path)
-    refreshed = refresh_memory(
-        current, fact_store, catalyst_horizon_days=catalyst_horizon_days
-    )
+    refreshed = refresh_memory(current, fact_store, catalyst_horizon_days=catalyst_horizon_days)
     save_memory(refreshed, path)
     return refreshed
 

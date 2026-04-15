@@ -787,9 +787,7 @@ def _handle_memory_edit(memory_path: Path | None) -> None:
 
     editor = os.environ.get("EDITOR") or shutil.which("nano") or shutil.which("vi")
     if not editor:
-        click.echo(
-            "No editor available. Set $EDITOR or install nano/vi to use 'memory edit'.\n"
-        )
+        click.echo("No editor available. Set $EDITOR or install nano/vi to use 'memory edit'.\n")
         return
     try:
         subprocess.call([editor, str(memory_path)])

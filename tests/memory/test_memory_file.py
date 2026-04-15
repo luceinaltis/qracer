@@ -148,9 +148,7 @@ class TestParseMemory:
 
 
 class TestRefreshMemory:
-    def test_regenerates_auto_region_from_fact_store(
-        self, fact_store: FactStore
-    ) -> None:
+    def test_regenerates_auto_region_from_fact_store(self, fact_store: FactStore) -> None:
         fact_store.save_thesis(_thesis("AAPL"), session_id="s1")
         fact_store.save_thesis(_thesis("NVDA", conviction=9), session_id="s1")
 
@@ -167,9 +165,7 @@ class TestRefreshMemory:
         refreshed = refresh_memory(original, fact_store)
         assert refreshed.user_content == "## Notes\n\nKeep me."
 
-    def test_upcoming_catalysts_within_horizon(
-        self, fact_store: FactStore
-    ) -> None:
+    def test_upcoming_catalysts_within_horizon(self, fact_store: FactStore) -> None:
         from datetime import timedelta
 
         near = (datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d")
@@ -177,9 +173,7 @@ class TestRefreshMemory:
         doc = refresh_memory(MemoryDocument(), fact_store, catalyst_horizon_days=30)
         assert any("AAPL" in line for line in doc.auto_catalysts)
 
-    def test_catalyst_outside_horizon_excluded(
-        self, fact_store: FactStore
-    ) -> None:
+    def test_catalyst_outside_horizon_excluded(self, fact_store: FactStore) -> None:
         from datetime import timedelta
 
         far = (datetime.now() + timedelta(days=120)).strftime("%Y-%m-%d")
@@ -187,17 +181,13 @@ class TestRefreshMemory:
         doc = refresh_memory(MemoryDocument(), fact_store, catalyst_horizon_days=30)
         assert doc.auto_catalysts == []
 
-    def test_no_theses_yields_empty_auto_lists(
-        self, fact_store: FactStore
-    ) -> None:
+    def test_no_theses_yields_empty_auto_lists(self, fact_store: FactStore) -> None:
         doc = refresh_memory(MemoryDocument(), fact_store)
         assert doc.auto_theses == []
         assert doc.auto_catalysts == []
 
     def test_last_updated_bumped(self, fact_store: FactStore) -> None:
-        old = MemoryDocument(
-            last_updated=datetime(2020, 1, 1, tzinfo=timezone.utc)
-        )
+        old = MemoryDocument(last_updated=datetime(2020, 1, 1, tzinfo=timezone.utc))
         refreshed = refresh_memory(old, fact_store)
         assert refreshed.last_updated > old.last_updated
 
@@ -233,9 +223,7 @@ class TestPersistence:
         self, tmp_path: Path, fact_store: FactStore
     ) -> None:
         path = tmp_path / "MEMORY.md"
-        save_memory(
-            MemoryDocument(user_content="## Mine\n\nKeep this."), path
-        )
+        save_memory(MemoryDocument(user_content="## Mine\n\nKeep this."), path)
         fact_store.save_thesis(_thesis("AAPL"), session_id="s1")
         refreshed = refresh_memory_file(path, fact_store)
         assert "Keep this." in refreshed.user_content
@@ -277,8 +265,6 @@ class TestLoadBootstrap:
 
 class TestSummaryLine:
     def test_counts_reflected(self) -> None:
-        doc = MemoryDocument(
-            auto_theses=["a", "b", "c"], auto_catalysts=["x", "y"]
-        )
+        doc = MemoryDocument(auto_theses=["a", "b", "c"], auto_catalysts=["x", "y"])
         assert "3 active theses" in doc.summary_line()
         assert "2 upcoming catalysts" in doc.summary_line()
